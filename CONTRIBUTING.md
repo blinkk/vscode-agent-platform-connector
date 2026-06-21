@@ -33,7 +33,20 @@ extension loaded.
 1. Keep changes focused; one logical change per PR.
 2. Add or update tests for behavior changes.
 3. Make sure `typecheck`, `lint`, `test`, and `build` all pass (CI runs these).
-4. Add a `CHANGELOG.md` entry under `[Unreleased]` for user-facing changes.
+4. For any user-facing change, run `pnpm changeset` and commit the generated
+   file. Pick `patch` / `minor` / `major` and write a short summary — this drives
+   the version bump and `CHANGELOG.md` at release time.
+
+## Releasing
+
+This project uses [Changesets](https://github.com/changesets/changesets) for
+versioning, similar to [`@blinkk/root`](https://github.com/blinkk/rootjs).
+
+1. `pnpm changeset` — describe each change (creates a file under `.changeset/`).
+2. `pnpm version` — consume pending changesets: bumps `package.json` and updates
+   `CHANGELOG.md`. Commit the result.
+3. `pnpm release` — build, package, and `vsce publish` to the VS Code
+   Marketplace. Use `pnpm release:ovsx` to also publish to Open VSX.
 
 ## Reporting security issues
 

@@ -1,14 +1,6 @@
-# Changelog
+# vscode-agent-platform-connector
 
-All notable changes to the **Blinkk Agent Platform Chat Connector** extension are
-documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-## [0.1.0] - 2026-06-20
+## 0.1.0
 
 Initial preview release.
 
@@ -30,6 +22,3 @@ Initial preview release.
 - Status bar item, output channel, and commands: Settings, Show Logs,
   Check Models, Sign In (isolated credentials).
 - Actionable upstream error messages (enable API / role / Model Garden links).
-
-[Unreleased]: https://github.com/blinkk/vscode-agent-platform-connector/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/blinkk/vscode-agent-platform-connector/releases/tag/v0.1.0

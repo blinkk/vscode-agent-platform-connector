@@ -60,6 +60,10 @@
     "test:watch": "vitest",
     "vscode:prepublish": "node ./esbuild.mjs",
     "package": "vsce package --no-dependencies -o vscode-agent-platform-connector.vsix",
+    "changeset": "changeset",
+    "version": "changeset version && pnpm install --no-frozen-lockfile",
+    "release": "pnpm run package && vsce publish --no-dependencies",
+    "release:ovsx": "pnpm run package && ovsx publish vscode-agent-platform-connector.vsix --no-dependencies",
     "publish:vsce": "vsce publish --no-dependencies",
     "publish:ovsx": "ovsx publish --no-dependencies"
   },
@@ -67,6 +71,7 @@
     "typescript": "*"
   },
   "devDependencies": {
+    "@changesets/cli": "2.31.0",
     "@eslint/js": "9.17.0",
     "@types/node": "22.0.0",
     "@types/vscode": "1.104.0",
