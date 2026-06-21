@@ -23,6 +23,31 @@ function run(cmd, args) {
   execFileSync(cmd, args, {stdio: 'inherit'});
 }
 
+/**
+ * Like `run`, but tolerates a registry that already has this version. When the
+ * extension was published out-of-band (e.g. manually from a workstation), the
+ * registry rejects the duplicate version; treat that as a non-fatal skip so the
+ * changesets action can still proceed to create the GitHub Release and tag.
+ * Any other failure is re-thrown.
+ */
+function runAllowingAlreadyPublished(cmd, args, registry) {
+  console.log(`$ ${cmd} ${args.join(' ')}`);
+  try {
+    execFileSync(cmd, args, {stdio: ['inherit', 'pipe', 'pipe']});
+  } catch (err) {
+    const output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
+    process.stdout.write(output);
+    if (/already exists/i.test(output)) {
+      console.log(
+        `${pkg.name} v${pkg.version} is already published to ${registry}; ` +
+          'skipping.'
+      );
+      return;
+    }
+    throw err;
+  }
+}
+
 // 1. Build the .vsix once.
 run('pnpm', ['exec', 'vsce', 'package', '--no-dependencies', '-o', vsix]);
 
@@ -35,20 +60,19 @@ if (!pat) {
       'environment locally.'
   );
 }
-run('pnpm', [
-  'exec',
-  'vsce',
-  'publish',
-  '--pat',
-  pat,
-  '--no-dependencies',
-  '--packagePath',
-  vsix,
-]);
+runAllowingAlreadyPublished(
+  'pnpm',
+  ['exec', 'vsce', 'publish', '--pat', pat, '--no-dependencies', '--packagePath', vsix],
+  'the VS Code Marketplace'
+);
 
 // 3. Publish to Open VSX (optional).
 if (process.env.OVSX_PAT) {
-  run('pnpm', ['exec', 'ovsx', 'publish', vsix, '--no-dependencies']);
+  runAllowingAlreadyPublished(
+    'pnpm',
+    ['exec', 'ovsx', 'publish', vsix, '--no-dependencies'],
+    'Open VSX'
+  );
 } else {
   console.log('OVSX_PAT not set; skipping Open VSX publish.');
 }
