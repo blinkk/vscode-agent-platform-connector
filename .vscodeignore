@@ -1,0 +1,27 @@
+# Only the bundled output, manifest, README, LICENSE, and icon ship in the VSIX.
+# The shared connector source (src/) is already inlined into dist/extension.cjs
+# by esbuild.
+src/**
+bin/**
+test/**
+esbuild.mjs
+tsconfig.json
+vitest.config.ts
+eslint.config.js
+.eslintrc*
+.editorconfig
+.gitignore
+.github/**
+pnpm-lock.yaml
+pnpm-workspace.yaml
+package-lock.json
+.npmrc
+**/*.map
+**/*.ts
+**/.DS_Store
+.vscodeignore
+node_modules/**
+*.vsix
+
+# Keep the bundled extension.
+!dist/extension.cjs

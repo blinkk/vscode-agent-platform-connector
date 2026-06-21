@@ -1,0 +1,227 @@
+{
+  "name": "vscode-agentplatform-chat-connector",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "publisher": "blinkk",
+  "author": "Blinkk",
+  "displayName": "Blinkk Agent Platform Chat Connector",
+  "description": "Adds Gemini and Claude on Gemini Enterprise Agent Platform (formerly Vertex AI) to VS Code chat as a native language model provider, using your own gcloud credentials.",
+  "preview": true,
+  "pricing": "Free",
+  "qna": "marketplace",
+  "categories": [
+    "AI",
+    "Chat",
+    "Other"
+  ],
+  "keywords": [
+    "gemini",
+    "claude",
+    "vertex ai",
+    "agent platform",
+    "language model",
+    "chat",
+    "copilot",
+    "byok"
+  ],
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#1A73E8",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blinkk/vscode-agentplatform-chat-connector.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blinkk/vscode-agentplatform-chat-connector/issues"
+  },
+  "homepage": "https://github.com/blinkk/vscode-agentplatform-chat-connector#readme",
+  "engines": {
+    "node": ">=24",
+    "vscode": "^1.104.0"
+  },
+  "main": "./dist/extension.cjs",
+  "bin": {
+    "vscode-agentplatform-chat-connector": "./bin/google-agent-platform-connector.ts"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "scripts": {
+    "login": "node ./bin/google-agent-platform-connector.ts --login",
+    "check": "node ./bin/google-agent-platform-connector.ts --check",
+    "build": "node ./esbuild.mjs",
+    "watch": "node ./esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "vscode:prepublish": "node ./esbuild.mjs",
+    "package": "vsce package --no-dependencies -o vscode-agentplatform-chat-connector.vsix",
+    "publish:vsce": "vsce publish --no-dependencies",
+    "publish:ovsx": "ovsx publish --no-dependencies"
+  },
+  "peerDependencies": {
+    "typescript": "*"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.17.0",
+    "@types/node": "22.0.0",
+    "@types/vscode": "1.104.0",
+    "@vscode/vsce": "3.6.0",
+    "esbuild": "0.27.0",
+    "eslint": "9.17.0",
+    "globals": "15.14.0",
+    "ovsx": "0.10.1",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.18.0",
+    "vitest": "2.1.8"
+  },
+  "contributes": {
+    "configuration": [
+      {
+        "title": "Blinkk Agent Platform Chat Connector",
+        "order": 1,
+        "properties": {
+          "blinkkAgentPlatformConnector.project": {
+            "type": "string",
+            "default": "",
+            "order": 1,
+            "markdownDescription": "**Required.** GCP project that Gemini Enterprise Agent Platform (formerly Vertex AI) usage is billed to. Sent as both the request URL `projects/<project>/...` and the `x-goog-user-project` header.\n\n**Prerequisites for this project:**\n1. The [`gcloud` CLI](https://cloud.google.com/sdk/docs/install) is installed and you have signed in (use the **Sign In** command).\n2. The Vertex AI API is enabled and your account has the **Vertex AI User** role.\n3. Each model you want to use is enabled in this project's [Model Garden](https://console.cloud.google.com/agent-platform/model-garden) (Gemini is usually enabled by default; Claude models must be enabled and their terms accepted).\n\nIf empty, the connector falls back to the `GOOGLE_AGENT_PLATFORM_PROJECT` environment variable or the `project` key in the config file. The `GOOGLE_AGENT_PLATFORM_PROJECT` env var, if set, overrides this setting."
+          },
+          "blinkkAgentPlatformConnector.authMode": {
+            "type": "string",
+            "order": 2,
+            "enum": [
+              "adc",
+              "isolated"
+            ],
+            "default": "adc",
+            "markdownEnumDescriptions": [
+              "Use your global Application Default Credentials (`gcloud auth application-default login`).",
+              "Use the connector's own private gcloud credential store; populate it once via the **Sign In (isolated credentials)** command."
+            ],
+            "markdownDescription": "How the connector obtains a Google access token. Requires the [`gcloud` CLI](https://cloud.google.com/sdk/docs/install) on your PATH. Overridden by the `GOOGLE_AGENT_PLATFORM_AUTH_MODE` env var if set."
+          },
+          "blinkkAgentPlatformConnector.authAccount": {
+            "type": "string",
+            "default": "",
+            "order": 3,
+            "markdownDescription": "Optional gcloud account to pin (`gcloud ... --account=`). Usually unnecessary. Overridden by the `GOOGLE_AGENT_PLATFORM_AUTH_ACCOUNT` env var if set."
+          },
+          "blinkkAgentPlatformConnector.debug": {
+            "type": "boolean",
+            "default": false,
+            "order": 4,
+            "markdownDescription": "Enable verbose logging in the **Blinkk Agent Platform Chat Connector** output channel."
+          }
+        }
+      },
+      {
+        "title": "Locations",
+        "order": 2,
+        "properties": {
+          "blinkkAgentPlatformConnector.geminiLocation": {
+            "type": "string",
+            "default": "",
+            "order": 1,
+            "markdownDescription": "Vertex location for Gemini models (e.g. `global`, `us-central1`). Leave empty for the default (`global`). Overridden by the `GOOGLE_AGENT_PLATFORM_GEMINI_LOCATION` env var if set."
+          },
+          "blinkkAgentPlatformConnector.claudeLocation": {
+            "type": "string",
+            "default": "",
+            "order": 2,
+            "markdownDescription": "Vertex location for Claude models (e.g. `global`, `us-east5`). Leave empty for the default (`global`). Overridden by the `GOOGLE_AGENT_PLATFORM_CLAUDE_LOCATION` env var if set."
+          }
+        }
+      },
+      {
+        "title": "Models",
+        "order": 3,
+        "properties": {
+          "blinkkAgentPlatformConnector.customModels": {
+            "type": "array",
+            "default": [],
+            "order": 1,
+            "markdownDescription": "Additional models to expose, **beyond** the built-in defaults (Gemini and Claude). Use this to run any model your project has enabled in [Model Garden](https://console.cloud.google.com/agent-platform/model-garden) without waiting for a code change. The built-in defaults always stay available; a custom entry whose `id` matches a built-in id overrides that built-in.\n\nEach entry is an object. `id` and `name` are required; `api` is inferred from the id when omitted (`messages` for Claude/Anthropic, otherwise `chat`).\n\nExample:\n```json\n[\n  {\n    \"id\": \"google/gemini-3-pro\",\n    \"name\": \"Gemini 3 Pro\",\n    \"api\": \"chat\",\n    \"maxInputTokens\": 1048576,\n    \"maxOutputTokens\": 65535,\n    \"vision\": true\n  }\n]\n```",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "markdownDescription": "Picker/upstream model id, e.g. `google/gemini-3-pro` or `claude-opus-4-8`. Append `#thinking` to expose an extended-reasoning variant."
+                },
+                "name": {
+                  "type": "string",
+                  "markdownDescription": "Human-readable label shown in the model picker (the project is appended automatically)."
+                },
+                "api": {
+                  "type": "string",
+                  "enum": [
+                    "chat",
+                    "messages"
+                  ],
+                  "markdownEnumDescriptions": [
+                    "OpenAI Chat Completions shape (Gemini / openapi endpoint).",
+                    "Anthropic Messages shape (Claude / rawPredict endpoint)."
+                  ],
+                  "markdownDescription": "Upstream API shape. Inferred from the id when omitted."
+                },
+                "upstream": {
+                  "type": "string",
+                  "markdownDescription": "Optional upstream Vertex model id, if it differs from `id` (e.g. for a `#thinking` variant)."
+                },
+                "maxInputTokens": {
+                  "type": "number",
+                  "markdownDescription": "Maximum input tokens. Defaults to 1048576."
+                },
+                "maxOutputTokens": {
+                  "type": "number",
+                  "markdownDescription": "Maximum output tokens. Defaults to 65535."
+                },
+                "vision": {
+                  "type": "boolean",
+                  "markdownDescription": "Whether the model accepts image input."
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "languageModelChatProviders": [
+      {
+        "vendor": "blinkk-google-agent-platform",
+        "displayName": "Blinkk Agent Platform Chat Connector"
+      }
+    ],
+    "commands": [
+      {
+        "command": "googleAgentPlatform.openSettings",
+        "title": "Settings",
+        "category": "Blinkk Agent Platform Chat Connector"
+      },
+      {
+        "command": "googleAgentPlatform.showLogs",
+        "title": "Show Logs",
+        "category": "Blinkk Agent Platform Chat Connector"
+      },
+      {
+        "command": "googleAgentPlatform.check",
+        "title": "Check Models",
+        "category": "Blinkk Agent Platform Chat Connector"
+      },
+      {
+        "command": "googleAgentPlatform.signIn",
+        "title": "Sign In (isolated credentials)",
+        "category": "Blinkk Agent Platform Chat Connector"
+      }
+    ]
+  }
+}
