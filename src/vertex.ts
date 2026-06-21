@@ -596,13 +596,28 @@ async function postVertex(
  * Turn a raw Vertex HTTP error into a message that tells the user how to fix it.
  * Status codes from Vertex map to a small set of common, recoverable problems.
  */
-function explainHttpError(
+export function explainHttpError(
   status: number,
   statusText: string,
   body: string,
 ): string {
   const detail = body.slice(0, 400).replace(/\s+/g, ' ').trim();
   const project = config.project;
+
+  // A 400 caused by exceeding the model's context window is common and has
+  // nothing to do with project/location/model config, so give it a dedicated,
+  // actionable message instead of the generic "check your settings" hint.
+  if (status === 400 && /prompt is too long|maximum.*tokens|token.*maximum|exceeds the maximum number of tokens|input token count/i.test(body)) {
+    const counts = body.match(/(\d[\d,]{3,})\s*tokens?\s*>\s*(\d[\d,]{3,})/i);
+    const over = counts ? ` (${counts[1]} > ${counts[2]} tokens)` : '';
+    return (
+      `Vertex ${status} ${statusText}: The conversation is too long for this ` +
+      `model's context window${over}. Start a new chat, remove large files or ` +
+      'tool results from the context, or switch to a model with a larger ' +
+      'context window.'
+    );
+  }
+
   let hint: string;
   switch (status) {
     case 401:
