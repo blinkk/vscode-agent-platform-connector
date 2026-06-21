@@ -5,7 +5,7 @@
 Please report security vulnerabilities **privately**. Do not open a public GitHub
 issue.
 
-Use GitHub's [private vulnerability reporting](https://github.com/blinkk/vscode-agentplatform-chat-connector/security/advisories/new)
+Use GitHub's [private vulnerability reporting](https://github.com/blinkk/vscode-agent-platform-connector/security/advisories/new)
 ("Report a vulnerability" under the repository's **Security** tab), or email the
 maintainers.
 

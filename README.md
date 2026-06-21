@@ -155,13 +155,13 @@ extension loaded.
 ## Packaging & publishing
 
 ```bash
-npm run package        # → vscode-agentplatform-chat-connector.vsix
+npm run package        # → vscode-agent-platform-connector.vsix
 ```
 
 Install the `.vsix` locally with **Extensions: Install from VSIX…**, or:
 
 ```bash
-code --install-extension vscode-agentplatform-chat-connector.vsix
+code --install-extension vscode-agent-platform-connector.vsix
 ```
 
 To publish to the [Visual Studio Marketplace](https://marketplace.visualstudio.com/),

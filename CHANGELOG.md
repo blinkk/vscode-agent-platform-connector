@@ -31,5 +31,5 @@ Initial preview release.
   Check Models, Sign In (isolated credentials).
 - Actionable upstream error messages (enable API / role / Model Garden links).
 
-[Unreleased]: https://github.com/blinkk/vscode-agentplatform-chat-connector/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/blinkk/vscode-agentplatform-chat-connector/releases/tag/v0.1.0
+[Unreleased]: https://github.com/blinkk/vscode-agent-platform-connector/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/blinkk/vscode-agent-platform-connector/releases/tag/v0.1.0

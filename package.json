@@ -1,5 +1,5 @@
 {
-  "name": "vscode-agentplatform-chat-connector",
+  "name": "vscode-agent-platform-connector",
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
@@ -32,19 +32,19 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/blinkk/vscode-agentplatform-chat-connector.git"
+    "url": "https://github.com/blinkk/vscode-agent-platform-connector.git"
   },
   "bugs": {
-    "url": "https://github.com/blinkk/vscode-agentplatform-chat-connector/issues"
+    "url": "https://github.com/blinkk/vscode-agent-platform-connector/issues"
   },
-  "homepage": "https://github.com/blinkk/vscode-agentplatform-chat-connector#readme",
+  "homepage": "https://github.com/blinkk/vscode-agent-platform-connector#readme",
   "engines": {
     "node": ">=24",
     "vscode": "^1.104.0"
   },
   "main": "./dist/extension.cjs",
   "bin": {
-    "vscode-agentplatform-chat-connector": "./bin/google-agent-platform-connector.ts"
+    "vscode-agent-platform-connector": "./bin/google-agent-platform-connector.ts"
   },
   "activationEvents": [
     "onStartupFinished"
@@ -59,7 +59,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "vscode:prepublish": "node ./esbuild.mjs",
-    "package": "vsce package --no-dependencies -o vscode-agentplatform-chat-connector.vsix",
+    "package": "vsce package --no-dependencies -o vscode-agent-platform-connector.vsix",
     "publish:vsce": "vsce publish --no-dependencies",
     "publish:ovsx": "ovsx publish --no-dependencies"
   },
