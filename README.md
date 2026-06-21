@@ -1,9 +1,24 @@
 # Blinkk Agent Platform Chat Connector
 
+[![Visual Studio Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/blinkk.vscode-agent-platform-connector?label=Marketplace)](https://marketplace.visualstudio.com/items?itemName=blinkk.vscode-agent-platform-connector)
+[![Visual Studio Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/blinkk.vscode-agent-platform-connector)](https://marketplace.visualstudio.com/items?itemName=blinkk.vscode-agent-platform-connector)
+
 Adds Gemini and Claude on Gemini Enterprise Agent Platform (formerly Vertex AI)
 to VS Code chat as a **native language model provider**, using your own gcloud
 credentials — no API keys stored in the editor, and no local proxy or background
 service. Usage is billed to **your** GCP project, not GitHub Copilot.
+
+## Install
+
+Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=blinkk.vscode-agent-platform-connector),
+or from the command line:
+
+```bash
+code --install-extension blinkk.vscode-agent-platform-connector
+```
+
+You can also search **Blinkk Agent Platform Chat Connector** in the Extensions
+view (`Cmd`/`Ctrl`+`Shift`+`X`).
 
 ## What it does
 
