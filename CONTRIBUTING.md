@@ -42,11 +42,35 @@ extension loaded.
 This project uses [Changesets](https://github.com/changesets/changesets) for
 versioning, similar to [`@blinkk/root`](https://github.com/blinkk/rootjs).
 
+**Automated (preferred):** Pushing to `main` runs
+`.github/workflows/release.yml`. When changesets are pending it opens a
+"Version Packages" PR; merging that PR publishes to the VS Code Marketplace.
+Publishing authenticates with **Microsoft Entra ID via OIDC** (no stored PAT) —
+see [Marketplace publishing auth](#marketplace-publishing-auth) for the one-time
+Azure setup.
+
+**Manual:**
+
 1. `pnpm changeset` — describe each change (creates a file under `.changeset/`).
 2. `pnpm version` — consume pending changesets: bumps `package.json` and updates
    `CHANGELOG.md`. Commit the result.
-3. `pnpm release` — build, package, and `vsce publish` to the VS Code
-   Marketplace. Use `pnpm release:ovsx` to also publish to Open VSX.
+3. `az login` (so `vsce` can get an Entra token), then `pnpm release` — build,
+   package, and `vsce publish --azure-credential` to the Marketplace. Use
+   `pnpm release:ovsx` to also publish to Open VSX (needs `OVSX_PAT`).
+
+### Marketplace publishing auth
+
+Global Azure DevOps PATs are retired Dec 1, 2026, so this repo publishes with
+Microsoft Entra ID workload identity federation instead. CI auth is configured
+via two GitHub **repository variables** (not secrets — they are not sensitive):
+
+- `AZURE_CLIENT_ID` — client ID of the Entra app registration / managed identity
+  federated to this repo.
+- `AZURE_TENANT_ID` — the Entra tenant ID.
+
+The app registration must be added as a member of the `blinkk` Marketplace
+publisher with the **Contributor** role. Open VSX (optional) still uses an
+`OVSX_PAT` repo secret. See `docs/PUBLISHING.md` for the full one-time setup.
 
 ## Reporting security issues
 

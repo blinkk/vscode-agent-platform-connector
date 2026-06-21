@@ -62,7 +62,7 @@
     "package": "vsce package --no-dependencies -o vscode-agent-platform-connector.vsix",
     "changeset": "changeset",
     "version": "changeset version && pnpm install --no-frozen-lockfile",
-    "release": "pnpm run package && vsce publish --no-dependencies --packagePath vscode-agent-platform-connector.vsix",
+    "release": "pnpm run package && vsce publish --azure-credential --no-dependencies --packagePath vscode-agent-platform-connector.vsix",
     "release:ovsx": "pnpm run package && ovsx publish vscode-agent-platform-connector.vsix --no-dependencies",
     "release:ci": "node ./scripts/release-ci.mjs"
   },

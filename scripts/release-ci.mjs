@@ -2,11 +2,14 @@
 /**
  * CI publish step invoked by changesets/action after a "Version Packages" PR
  * merges. Packages the extension once, then publishes the resulting .vsix to:
- *   - the VS Code Marketplace (requires VSCE_PAT)
- *   - Open VSX (optional; only when OVSX_PAT is set)
+ *   - the VS Code Marketplace, via Microsoft Entra ID (the prior `azure/login`
+ *     OIDC step in the workflow provides the credential; vsce uses
+ *     DefaultAzureCredential with `--azure-credential`). No PAT required.
+ *   - Open VSX (optional; only when OVSX_PAT is set, since Open VSX is not part
+ *     of Entra ID).
  *
- * vsce reads VSCE_PAT and ovsx reads OVSX_PAT from the environment, so no
- * tokens are passed on the command line.
+ * For a manual publish from a workstation, run `az login` first (then this
+ * script's vsce step authenticates the same way).
  */
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
@@ -22,12 +25,16 @@ function run(cmd, args) {
 // 1. Build the .vsix once.
 run('pnpm', ['exec', 'vsce', 'package', '--no-dependencies', '-o', vsix]);
 
-// 2. Publish to the VS Code Marketplace (required).
-if (!process.env.VSCE_PAT) {
-  console.error('VSCE_PAT is not set; cannot publish to the VS Code Marketplace.');
-  process.exit(1);
-}
-run('pnpm', ['exec', 'vsce', 'publish', '--no-dependencies', '--packagePath', vsix]);
+// 2. Publish to the VS Code Marketplace using Entra ID (no PAT).
+run('pnpm', [
+  'exec',
+  'vsce',
+  'publish',
+  '--azure-credential',
+  '--no-dependencies',
+  '--packagePath',
+  vsix,
+]);
 
 // 3. Publish to Open VSX (optional).
 if (process.env.OVSX_PAT) {
