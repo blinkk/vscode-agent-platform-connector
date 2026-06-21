@@ -71,3 +71,25 @@ describe('buildGeminiBody thought signatures', () => {
     expect(tc.function.arguments).toBe('{"q":"v"}');
   });
 });
+
+describe('buildGeminiBody image attachments', () => {
+  it('renders a user image as an image_url data URI part', () => {
+    const messages = geminiMessages({
+      messages: [
+        {
+          role: 'user',
+          text: 'what is this?',
+          images: [{ mimeType: 'image/png', data: 'AAAA' }],
+        },
+      ],
+    });
+
+    const user = messages.find((m) => m.role === 'user')!;
+    expect(Array.isArray(user.content)).toBe(true);
+    expect(user.content[0]).toEqual({ type: 'text', text: 'what is this?' });
+    expect(user.content[1]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'data:image/png;base64,AAAA' },
+    });
+  });
+});

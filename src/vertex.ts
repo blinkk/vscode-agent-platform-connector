@@ -299,10 +299,19 @@ export interface NormToolResult {
   content: string;
 }
 
+export interface NormImage {
+  /** Image MIME type, e.g. `image/png`. */
+  mimeType: string;
+  /** Base64-encoded image bytes (no data: prefix). */
+  data: string;
+}
+
 export interface NormMessage {
   role: 'system' | 'user' | 'assistant';
   /** Plain text content (concatenated). */
   text?: string;
+  /** Image attachments (carried on a user-role message). */
+  images?: NormImage[];
   /** Assistant tool-call requests. */
   toolCalls?: NormToolCall[];
   /** Tool results to feed back (carried on a user-role message). */
@@ -380,6 +389,16 @@ export function buildGeminiBody(model: ModelDef, req: NormRequest): unknown {
           },
         })),
       });
+    } else if (m.images?.length) {
+      const parts: Array<Record<string, unknown>> = [];
+      if (m.text) parts.push({ type: 'text', text: m.text });
+      for (const img of m.images) {
+        parts.push({
+          type: 'image_url',
+          image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+        });
+      }
+      messages.push({ role: m.role, content: parts });
     } else if (m.text !== undefined && m.text !== '') {
       messages.push({ role: m.role, content: m.text });
     } else if (!m.toolResults?.length) {
@@ -434,6 +453,18 @@ function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
     }
     const content: Array<Record<string, unknown>> = [];
     if (m.text) content.push({ type: 'text', text: m.text });
+    if (m.images?.length) {
+      for (const img of m.images) {
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: img.mimeType,
+            data: img.data,
+          },
+        });
+      }
+    }
     if (m.role === 'assistant' && m.toolCalls?.length) {
       for (const t of m.toolCalls) {
         content.push({

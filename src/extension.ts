@@ -34,6 +34,7 @@ import {
   streamChat,
 } from './vertex.ts';
 import type {
+  NormImage,
   NormMessage,
   NormRequest,
   NormToolCall,
@@ -226,6 +227,27 @@ function toolResultText(part: vscode.LanguageModelToolResultPart): string {
   return out.join('');
 }
 
+/**
+ * Image attachments arrive as data parts in a message's content array. The
+ * provider-side data-part type is not in the stable `@types/vscode` surface
+ * (it lands as `unknown` in the content union), so detect it by shape: an
+ * object exposing a `mimeType` string and a `data` byte array. Returns the
+ * normalized image when the part is an image, otherwise undefined.
+ */
+function asNormImage(part: unknown): NormImage | undefined {
+  if (!part || typeof part !== 'object') return undefined;
+  const p = part as {mimeType?: unknown; data?: unknown};
+  if (typeof p.mimeType !== 'string' || !p.mimeType.startsWith('image/')) {
+    return undefined;
+  }
+  // `data` is a Uint8Array at runtime; Buffer.from accepts it directly.
+  if (!(p.data instanceof Uint8Array)) return undefined;
+  return {
+    mimeType: p.mimeType,
+    data: Buffer.from(p.data).toString('base64'),
+  };
+}
+
 /** Convert VS Code request messages into the connector's normalized shape. */
 function toNormMessages(
   messages: readonly vscode.LanguageModelChatRequestMessage[]
@@ -239,6 +261,7 @@ function toNormMessages(
     let text = '';
     const toolCalls: NormToolCall[] = [];
     const toolResults: NormToolResult[] = [];
+    const images: NormImage[] = [];
 
     for (const part of msg.content) {
       if (part instanceof vscode.LanguageModelTextPart) {
@@ -254,6 +277,11 @@ function toNormMessages(
           callId: part.callId,
           content: toolResultText(part),
         });
+      } else {
+        // Image attachments arrive as data parts that are not in the typed
+        // content union; forward them only when they are image payloads.
+        const img = asNormImage(part);
+        if (img) images.push(img);
       }
     }
 
@@ -262,10 +290,11 @@ function toNormMessages(
     if (toolResults.length) {
       result.push({role: 'user', toolResults});
     }
-    if (text || toolCalls.length) {
+    if (text || toolCalls.length || images.length) {
       result.push({
         role,
         text: text || undefined,
+        images: images.length ? images : undefined,
         toolCalls: toolCalls.length ? toolCalls : undefined,
       });
     }
