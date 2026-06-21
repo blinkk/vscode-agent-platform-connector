@@ -1,5 +1,5 @@
-onlyBuiltDependencies:
-  - esbuild
-  - keytar
-  - "@vscode/vsce-sign"
+allowBuilds:
+  "@vscode/vsce-sign": true
+  esbuild: true
+  keytar: true
 verifyDepsBeforeRun: false
