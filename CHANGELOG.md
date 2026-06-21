@@ -1,5 +1,11 @@
 # vscode-agent-platform-connector
 
+## 0.1.1
+
+### Patch Changes
+
+- Make the "Project" item in the status menu interactive: clicking "Project: Not set" (or the current project) now opens a validated input prompt to set the GCP project, which is saved to your VS Code settings.
+
 ## 0.1.0
 
 Initial preview release.

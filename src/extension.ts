@@ -100,17 +100,51 @@ function renderStatusBar(): void {
 }
 
 /**
+ * Prompt the user for a GCP project id and persist it to settings. Writes to
+ * the workspace folder when one is open, otherwise to the global settings.
+ */
+async function promptForProject(): Promise<void> {
+  const value = await vscode.window.showInputBox({
+    title: 'Set GCP project',
+    prompt:
+      'GCP project that Agent Platform (Vertex AI) usage is billed to.',
+    placeHolder: 'my-gcp-project',
+    value: connectorConfig.project || '',
+    ignoreFocusOut: true,
+    validateInput: (input) => {
+      const v = input.trim();
+      if (!v) return 'Project id cannot be empty.';
+      if (!/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(v)) {
+        return 'Enter a valid GCP project id (6-30 chars: lowercase letters, digits, hyphens).';
+      }
+      return undefined;
+    },
+  });
+  if (value === undefined) return; // user cancelled
+
+  const target = vscode.workspace.workspaceFolders?.length
+    ? vscode.ConfigurationTarget.Workspace
+    : vscode.ConfigurationTarget.Global;
+  await vscode.workspace
+    .getConfiguration(SETTINGS_SECTION)
+    .update('project', value.trim(), target);
+  // The onDidChangeConfiguration handler re-applies config and refreshes UI.
+}
+
+/**
  * QuickPick shown when the status bar item is clicked. VS Code only reveals the
  * hover tooltip on hover (there is no API to pop it on click), so clicking opens
  * this menu with the same status info plus the same actions.
  */
 async function showStatusMenu(): Promise<void> {
   const account = connectorConfig.authAccount;
-  const info: vscode.QuickPickItem[] = [
+  const info: (vscode.QuickPickItem & {command?: string})[] = [
     {
       label: connectorConfig.project
         ? `$(project) Project: ${connectorConfig.project}`
         : '$(warning) Project: not set',
+      detail: 'Set the GCP project',
+      command: 'googleAgentPlatform.setProject',
       kind: vscode.QuickPickItemKind.Default,
     },
     {
@@ -467,6 +501,10 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand('googleAgentPlatform.showLogs', () =>
       output.show(true)
+    ),
+    vscode.commands.registerCommand(
+      'googleAgentPlatform.setProject',
+      promptForProject
     ),
     vscode.commands.registerCommand('googleAgentPlatform.signIn', () => {
       // Runs gcloud directly in a terminal (no npm package needed). The exact

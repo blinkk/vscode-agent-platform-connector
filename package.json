@@ -1,6 +1,6 @@
 {
   "name": "vscode-agent-platform-connector",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "type": "module",
   "publisher": "blinkk",
@@ -214,6 +214,11 @@
       {
         "command": "googleAgentPlatform.showLogs",
         "title": "Show Logs",
+        "category": "Blinkk Agent Platform Chat Connector"
+      },
+      {
+        "command": "googleAgentPlatform.setProject",
+        "title": "Set GCP Project",
         "category": "Blinkk Agent Platform Chat Connector"
       },
       {
