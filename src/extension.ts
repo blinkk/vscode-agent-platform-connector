@@ -248,6 +248,25 @@ function asNormImage(part: unknown): NormImage | undefined {
   };
 }
 
+/**
+ * Detect VS Code/Copilot internal control parts that must never be forwarded
+ * upstream. The chat client injects prompt-cache breakpoints as marshalled data
+ * parts shaped like `{$mid, mimeType: 'cache_control', data: <base64>}` (the
+ * data decodes to "ephemeral"). These are client-internal hints, not user
+ * content. We match the well-known `cache_control` mimeType, plus any other
+ * marshalled (`$mid`) control part whose mimeType is not an image, so the check
+ * never swallows real image attachments and does not depend on the payload.
+ */
+function isInternalControlPart(part: unknown): boolean {
+  if (!part || typeof part !== 'object') return false;
+  const p = part as {mimeType?: unknown; $mid?: unknown};
+  if (p.mimeType === 'cache_control') return true;
+  return (
+    typeof p.$mid === 'number' &&
+    (typeof p.mimeType !== 'string' || !p.mimeType.startsWith('image/'))
+  );
+}
+
 /** Convert VS Code request messages into the connector's normalized shape. */
 function toNormMessages(
   messages: readonly vscode.LanguageModelChatRequestMessage[]
@@ -277,6 +296,11 @@ function toNormMessages(
           callId: part.callId,
           content: toolResultText(part),
         });
+      } else if (isInternalControlPart(part)) {
+        // VS Code/Copilot prompt-cache markers (cache_control: ephemeral) and
+        // other internal marshalled control parts: drop them explicitly so they
+        // are never forwarded to the upstream model.
+        continue;
       } else {
         // Image attachments arrive as data parts that are not in the typed
         // content union; forward them only when they are image payloads.
@@ -435,23 +459,73 @@ class GoogleAgentPlatformProvider implements vscode.LanguageModelChatProvider {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _token: vscode.CancellationToken
   ): Promise<number> {
-    // Vertex exposes no client-side tokenizer; approximate at ~4 chars/token.
-    let chars = 0;
-    if (typeof text === 'string') {
-      chars = text.length;
-    } else {
-      for (const part of text.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          chars += part.value.length;
-        } else if (part instanceof vscode.LanguageModelToolResultPart) {
-          chars += toolResultText(part).length;
-        } else if (part instanceof vscode.LanguageModelToolCallPart) {
-          chars += JSON.stringify(part.input ?? {}).length + part.name.length;
-        }
-      }
-    }
-    return Math.max(1, Math.ceil(chars / 4));
+    return countMessageTokens(text);
   }
+}
+
+/**
+ * Approximate the token cost of a message (or raw string).
+ *
+ * Vertex exposes no client-side tokenizer, and VS Code's chat client relies on
+ * this estimate to decide when to trim/summarize history before it overflows
+ * the model's context window. An estimate that is too LOW is dangerous: the
+ * client thinks there is room, never compacts, and the request fails upstream
+ * with "prompt is too long". So the estimate is intentionally conservative —
+ * it accounts for every part (including images, which the previous version
+ * counted as zero) and adds a small per-part overhead for role/markup framing.
+ */
+function countMessageTokens(
+  text: string | vscode.LanguageModelChatRequestMessage
+): number {
+  // ~4 chars per token for natural-language/code text.
+  const CHARS_PER_TOKEN = 4;
+  // Fixed framing overhead charged per message and per content part.
+  const PER_MESSAGE_TOKENS = 4;
+  const PER_PART_TOKENS = 4;
+
+  if (typeof text === 'string') {
+    return Math.max(1, Math.ceil(text.length / CHARS_PER_TOKEN));
+  }
+
+  let tokens = PER_MESSAGE_TOKENS;
+  for (const part of text.content) {
+    tokens += PER_PART_TOKENS;
+    if (part instanceof vscode.LanguageModelTextPart) {
+      tokens += Math.ceil(part.value.length / CHARS_PER_TOKEN);
+    } else if (part instanceof vscode.LanguageModelToolResultPart) {
+      tokens += Math.ceil(toolResultText(part).length / CHARS_PER_TOKEN);
+    } else if (part instanceof vscode.LanguageModelToolCallPart) {
+      const json = JSON.stringify(part.input ?? {}).length + part.name.length;
+      tokens += Math.ceil(json / CHARS_PER_TOKEN);
+    } else {
+      // Image (or other data) parts were previously counted as zero, which let
+      // image-heavy conversations sail past the context limit without ever
+      // triggering compaction. Charge a conservative cost based on the encoded
+      // payload size, with a floor so even a tiny image is not free.
+      tokens += estimateImageTokens(part);
+    }
+  }
+  return Math.max(1, tokens);
+}
+
+/**
+ * Conservative token estimate for an image content part. Vertex/Anthropic bill
+ * images by their rendered tile dimensions, which we cannot cheaply derive
+ * here, so approximate from the raw byte size and clamp to a sane range. The
+ * goal is only to keep the client's "is the context full?" math honest, not to
+ * predict the exact upstream billing.
+ */
+function estimateImageTokens(part: unknown): number {
+  // Floor and ceiling roughly bracket a small thumbnail vs. a large image.
+  const MIN_IMAGE_TOKENS = 256;
+  const MAX_IMAGE_TOKENS = 4096;
+  const img = asNormImage(part);
+  if (!img) return 0;
+  // base64 inflates bytes by ~4/3; recover the raw byte count, then assume a
+  // typical compression ratio to land in the documented per-image token range.
+  const rawBytes = Math.floor((img.data.length * 3) / 4);
+  const estimate = Math.ceil(rawBytes / 750);
+  return Math.min(MAX_IMAGE_TOKENS, Math.max(MIN_IMAGE_TOKENS, estimate));
 }
 
 /* -------------------------------------------------------------------------- */
