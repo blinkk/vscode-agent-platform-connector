@@ -16,9 +16,6 @@ permissions:
   # Required by changesets to push the version commit and open the release PR.
   contents: write
   pull-requests: write
-  # Required to mint a short-lived Microsoft Entra ID token via OIDC for
-  # azure/login (no stored Marketplace PAT).
-  id-token: write
 
 jobs:
   release:
@@ -59,23 +56,11 @@ jobs:
           pnpm test
           pnpm run build
 
-      # Sign in to Microsoft Entra ID via OIDC workload identity federation.
-      # This stores a short-lived credential that `vsce publish
-      # --azure-credential` (DefaultAzureCredential) uses to authenticate to the
-      # Marketplace. No long-lived PAT is stored. Skipped when these repo
-      # variables are unset (e.g. on the version-PR run, where nothing is
-      # published).
-      - name: Azure login (OIDC)
-        if: vars.AZURE_CLIENT_ID != ''
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          allow-no-subscriptions: true
-
       # When there are pending changesets, this opens (or updates) a
       # "Version Packages" PR. When that PR is merged, this step instead runs
-      # the `publish` command to package and publish the extension.
+      # the `publish` command to package and publish the extension. Publishing
+      # authenticates to the Marketplace with the VSCE_PAT secret (a Marketplace
+      # PAT with the Marketplace > Manage scope).
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
@@ -86,5 +71,7 @@ jobs:
           title: 'ci: release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Open VSX still uses a token (it is not part of Entra ID); optional.
+          # Marketplace PAT used by `vsce publish` (Marketplace > Manage scope).
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          # Open VSX still uses its own token; optional.
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
