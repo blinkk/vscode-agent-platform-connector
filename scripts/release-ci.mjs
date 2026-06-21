@@ -18,9 +18,9 @@ import {readFileSync} from 'node:fs';
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));
 const vsix = `${pkg.name}.vsix`;
 
-function run(cmd, args) {
+function run(cmd, args, env) {
   console.log(`$ ${cmd} ${args.join(' ')}`);
-  execFileSync(cmd, args, {stdio: 'inherit'});
+  execFileSync(cmd, args, {stdio: 'inherit', env: {...process.env, ...env}});
 }
 
 /**
@@ -30,10 +30,13 @@ function run(cmd, args) {
  * changesets action can still proceed to create the GitHub Release and tag.
  * Any other failure is re-thrown.
  */
-function runAllowingAlreadyPublished(cmd, args, registry) {
+function runAllowingAlreadyPublished(cmd, args, registry, env) {
   console.log(`$ ${cmd} ${args.join(' ')}`);
   try {
-    execFileSync(cmd, args, {stdio: ['inherit', 'pipe', 'pipe']});
+    execFileSync(cmd, args, {
+      stdio: ['inherit', 'pipe', 'pipe'],
+      env: {...process.env, ...env},
+    });
   } catch (err) {
     const output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
     process.stdout.write(output);
@@ -52,6 +55,11 @@ function runAllowingAlreadyPublished(cmd, args, registry) {
 run('pnpm', ['exec', 'vsce', 'package', '--no-dependencies', '-o', vsix]);
 
 // 2. Publish to the VS Code Marketplace using a PAT.
+//
+// The token is passed via the `VSCE_PAT` env var (which `vsce` reads
+// automatically), NOT the `--pat` CLI flag. Passing it as a flag causes vsce to
+// echo the token in plaintext to stdout/CI logs; the env var keeps it out of
+// the logged command line.
 const pat = process.env.VSCE_PAT || process.env.AZURE_PAT;
 if (!pat) {
   throw new Error(
@@ -62,8 +70,9 @@ if (!pat) {
 }
 runAllowingAlreadyPublished(
   'pnpm',
-  ['exec', 'vsce', 'publish', '--pat', pat, '--no-dependencies', '--packagePath', vsix],
-  'the VS Code Marketplace'
+  ['exec', 'vsce', 'publish', '--no-dependencies', '--packagePath', vsix],
+  'the VS Code Marketplace',
+  {VSCE_PAT: pat}
 );
 
 // 3. Publish to Open VSX (optional).
