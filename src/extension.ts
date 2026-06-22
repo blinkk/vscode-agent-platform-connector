@@ -216,6 +216,14 @@ function toolResultText(part: vscode.LanguageModelToolResultPart): string {
       out.push(piece.value);
     } else if (typeof piece === 'string') {
       out.push(piece);
+    } else if (isInternalControlPart(piece)) {
+      // VS Code/Copilot can nest prompt-cache markers (cache_control:
+      // ephemeral) and other marshalled control parts inside tool results.
+      // These are client-internal hints, not tool output — never serialize
+      // them into the text we send upstream (doing so leaks the raw
+      // `{"$mid":...,"mimeType":"cache_control",...}` blob into the model's
+      // view of the conversation).
+      continue;
     } else {
       try {
         out.push(JSON.stringify(piece));
