@@ -810,14 +810,127 @@ async function* streamClaude(
 }
 
 /** Stream a normalized chat request against the given model. */
+/* -------------------------------------------------------------------------- */
+/* Context-window safeguard                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** Rough chars-per-token heuristic; must mirror the extension's estimator. */
+const CHARS_PER_TOKEN = 4;
+/** Fixed overhead added per message for role/structure framing. */
+const PER_MESSAGE_TOKENS = 4;
+/** Conservative per-image token cost (matches the picker-side estimate). */
+const IMAGE_MIN_TOKENS = 256;
+const IMAGE_MAX_TOKENS = 4096;
+
+function estimateImageTokens(img: NormImage): number {
+  // `data` is base64 of the raw bytes; recover the byte count.
+  const rawBytes = Math.floor((img.data?.length ?? 0) * 3) / 4;
+  const est = Math.ceil(rawBytes / 750);
+  return Math.min(IMAGE_MAX_TOKENS, Math.max(IMAGE_MIN_TOKENS, est));
+}
+
+/** Estimate the token cost of a single normalized message. */
+function estimateMessageTokens(m: NormMessage): number {
+  let chars = (m.text ?? '').length;
+  for (const tc of m.toolCalls ?? []) {
+    chars += (tc.name ?? '').length;
+    try {
+      chars += JSON.stringify(tc.input ?? '').length;
+    } catch {
+      /* ignore non-serializable input */
+    }
+  }
+  for (const tr of m.toolResults ?? []) {
+    chars += (tr.content ?? '').length;
+  }
+  let tokens = Math.ceil(chars / CHARS_PER_TOKEN) + PER_MESSAGE_TOKENS;
+  for (const img of m.images ?? []) tokens += estimateImageTokens(img);
+  return tokens;
+}
+
+/** Estimate the total input-token cost of a normalized request. */
+export function estimateRequestTokens(req: NormRequest): number {
+  let total = 0;
+  for (const m of req.messages) total += estimateMessageTokens(m);
+  for (const t of req.tools ?? []) {
+    let chars = (t.name ?? '').length + (t.description ?? '').length;
+    try {
+      chars += JSON.stringify(t.inputSchema ?? '').length;
+    } catch {
+      /* ignore */
+    }
+    total += Math.ceil(chars / CHARS_PER_TOKEN);
+  }
+  return total;
+}
+
+/**
+ * Drop the oldest non-system messages until the estimated input fits inside the
+ * model's context window (reserving room for the response). This is a last-line
+ * safeguard so a runaway conversation degrades gracefully instead of failing
+ * with an upstream 400; VS Code's own summarization should normally kick in
+ * first. System messages and the final user turn are always preserved.
+ *
+ * Returns the request to send (the same object when no trim was needed).
+ */
+export function fitRequestToContext(
+  model: ModelDef,
+  req: NormRequest,
+): NormRequest {
+  const limit = model.maxInputTokens;
+  if (!limit || !Number.isFinite(limit)) return req;
+
+  // Reserve headroom for the response plus heuristic slack (our estimator is
+  // approximate, so leave a margin below the hard upstream cap).
+  const reserve = Math.min(
+    limit - 1,
+    (model.maxOutputTokens ?? 4096) + Math.ceil(limit * 0.05),
+  );
+  const budget = Math.max(1, limit - reserve);
+
+  let total = estimateRequestTokens(req);
+  if (total <= budget) return req;
+
+  const messages = [...req.messages];
+  // Indices we must never drop: all system messages and the final message.
+  const lastIdx = messages.length - 1;
+  const protectedIdx = new Set<number>([lastIdx]);
+  messages.forEach((m, i) => {
+    if (m.role === 'system') protectedIdx.add(i);
+  });
+
+  // Walk from oldest to newest, removing droppable messages until we fit.
+  let removed = 0;
+  for (let i = 0; i < messages.length && total > budget; i++) {
+    if (protectedIdx.has(i)) continue;
+    if (!messages[i]) continue;
+    total -= estimateMessageTokens(messages[i]);
+    // Tombstone; filtered out below to keep indices stable during the loop.
+    (messages as Array<NormMessage | null>)[i] = null;
+    removed++;
+  }
+
+  if (removed === 0) return req;
+
+  const trimmed = (messages as Array<NormMessage | null>).filter(
+    (m): m is NormMessage => m !== null,
+  );
+  log(
+    `context safeguard: trimmed ${removed} oldest message(s); ` +
+      `~${total} est tokens <= ${budget} budget (limit ${limit})`,
+  );
+  return { ...req, messages: trimmed };
+}
+
 export function streamChat(
   model: ModelDef,
   req: NormRequest,
   signal?: AbortSignal,
 ): AsyncIterable<StreamEvent> {
+  const fitted = fitRequestToContext(model, req);
   return model.api === 'messages'
-    ? streamClaude(model, req, signal)
-    : streamGemini(model, req, signal);
+    ? streamClaude(model, fitted, signal)
+    : streamGemini(model, fitted, signal);
 }
 
 /* -------------------------------------------------------------------------- */
