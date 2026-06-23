@@ -53,6 +53,7 @@
   "scripts": {
     "login": "node ./bin/google-agent-platform-connector.ts --login",
     "check": "node ./bin/google-agent-platform-connector.ts --check",
+    "proxy": "node ./bin/google-agent-platform-connector.ts --proxy",
     "build": "node ./esbuild.mjs",
     "watch": "node ./esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",

@@ -11,8 +11,10 @@
  *   google-agent-platform-connector --login         # isolated gcloud sign-in
  *   google-agent-platform-connector --check         # probe token + models
  *   google-agent-platform-connector --print-config  # show effective config
+ *   google-agent-platform-connector --proxy         # serve Claude to Copilot CLI
  */
 
+import {startCliProxy} from '../src/cli-proxy.ts';
 import {printConfig, runCheck, runLogin} from '../src/vertex.ts';
 
 const argv = process.argv.slice(2);
@@ -30,9 +32,18 @@ Usage:
                                                   gcloud/ADC), then exit
   google-agent-platform-connector --check         Probe access token + all models, then exit
   google-agent-platform-connector --print-config  Print effective config
+  google-agent-platform-connector --proxy         Run a local Anthropic-compatible proxy so
+                                                  GitHub Copilot CLI can use Claude on Vertex
+                                                  (keeps running until interrupted)
   google-agent-platform-connector --help          Show this help`
   );
   process.exit(0);
+} else if (argv.includes('--proxy')) {
+  startCliProxy().catch((e: unknown) => {
+    console.error('proxy failed:', e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
+  // Intentionally do not exit: the proxy runs until the process is interrupted.
 } else if (argv.includes('--login')) {
   runLogin()
     .then(() => process.exit(0))
