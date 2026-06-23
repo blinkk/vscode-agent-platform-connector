@@ -74,7 +74,7 @@ export interface ModelDef {
 export function estimateCost(
   model: ModelDef | undefined,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
 ): number {
   const p = model?.pricing;
   if (!p) return 0;
@@ -137,7 +137,7 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1048576,
     maxOutputTokens: 65535,
     vision: true,
-    pricing: {input: 0.3, output: 2.5},
+    pricing: { input: 0.3, output: 2.5 },
   },
   {
     id: 'claude-opus-4-8',
@@ -146,20 +146,20 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 15, output: 75},
+    pricing: { input: 15, output: 75 },
   },
   {
     // Same upstream model as claude-opus-4-8, but the proxy enables extended
     // thinking. Exposed as its own picker entry because VS Code has no slider.
     id: 'claude-opus-4-8#thinking',
     upstream: 'claude-opus-4-8',
-    name: 'Claude Opus 4.8 Thinking',
+    name: 'Claude Opus 4.8 – High',
     api: 'messages',
-    thinking: {effort: 'high'},
+    thinking: { effort: 'high' },
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 15, output: 75},
+    pricing: { input: 15, output: 75 },
   },
   {
     id: 'claude-sonnet-4-5',
@@ -168,18 +168,18 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 3, output: 15},
+    pricing: { input: 3, output: 15 },
   },
   {
     id: 'claude-sonnet-4-5#thinking',
     upstream: 'claude-sonnet-4-5',
-    name: 'Claude Sonnet 4.5 Thinking',
+    name: 'Claude Sonnet 4.5 – High',
     api: 'messages',
-    thinking: {effort: 'high'},
+    thinking: { effort: 'high' },
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 3, output: 15},
+    pricing: { input: 3, output: 15 },
   },
 ];
 
@@ -220,7 +220,7 @@ export function normalizeCustomModel(raw: unknown): ModelDef {
   if (m.api && m.api !== 'chat' && m.api !== 'messages') {
     throw new Error(
       `custom model "${m.id}" has invalid "api" (use "chat" for Gemini/OpenAI ` +
-        'models or "messages" for Claude/Anthropic models)'
+        'models or "messages" for Claude/Anthropic models)',
     );
   }
   // Infer api from the id when omitted: Claude/Anthropic -> messages, else chat.
@@ -253,7 +253,7 @@ export function resolveModels(customModels?: ModelDef[]): ModelDef[] {
 /** Look up a catalog entry by its (possibly tagged) id within a model list. */
 export function findModel(
   id: string,
-  models: readonly ModelDef[] = MODELS
+  models: readonly ModelDef[] = MODELS,
 ): ModelDef | undefined {
   return models.find((m) => m.id === id);
 }
@@ -265,7 +265,7 @@ export function findModel(
 export const CONFIG_DIR = path.join(
   os.homedir(),
   '.config',
-  'blinkk-vscode-google-agent-platform-connector'
+  'blinkk-vscode-google-agent-platform-connector',
 );
 export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 export const LOG_PATH = path.join(CONFIG_DIR, 'connector.log');
@@ -314,7 +314,7 @@ export function anthropicUrl(
   project: string,
   location: string,
   model: string,
-  stream: boolean
+  stream: boolean,
 ): string {
   const method = stream ? 'streamRawPredict' : 'rawPredict';
   return (
