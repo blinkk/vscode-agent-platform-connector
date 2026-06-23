@@ -113,6 +113,65 @@ the API reports. Use the official
 [pricing page](https://cloud.google.com/vertex-ai/generative-ai/pricing) and your
 GCP billing reports for accurate numbers.
 
+## GitHub Copilot CLI (Claude via local proxy)
+
+Beyond the VS Code extension, the connector can serve **Claude on Agent Platform
+(Vertex AI)** to [GitHub Copilot CLI](https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli)
+through a small local proxy. Copilot CLI's "bring your own model provider" mode
+speaks the Anthropic Messages wire format; the proxy accepts those requests on
+loopback and streams them to Vertex using your gcloud credentials.
+
+> Currently only the **Anthropic / Claude** path is supported (Gemini's
+> OpenAI-compatible path is not yet implemented).
+
+The same [Prerequisites](#prerequisites) apply (gcloud, the Vertex AI API, and
+the Claude models enabled in Model Garden).
+
+1. **Start the proxy.** It requires Node ≥24 (see
+   [Troubleshooting](#troubleshooting) if you hit a Node-version error). Set the
+   GCP project that usage is billed to, then launch it:
+
+   ```bash
+   export GOOGLE_AGENT_PLATFORM_PROJECT=my-gcp-project
+   nvm-exec node bin/google-agent-platform-connector.ts --proxy
+   ```
+
+   The proxy listens on `http://127.0.0.1:8787` by default (override with the
+   `GOOGLE_AGENT_PLATFORM_PROXY_PORT` env var) and logs the exact variables to
+   set next. Check `http://127.0.0.1:8787/health` to see the project, auth mode,
+   and available Claude model ids.
+
+2. **Point Copilot CLI at the proxy.** In the shell where you run `copilot`, set
+   these environment variables:
+
+   ```bash
+   export COPILOT_PROVIDER_TYPE=anthropic
+   export COPILOT_PROVIDER_BASE_URL=http://127.0.0.1:8787
+   export COPILOT_PROVIDER_API_KEY=local-proxy   # ignored; gcloud supplies the real token
+   export COPILOT_MODEL=claude-opus-4-8          # any Claude catalog id
+   ```
+
+   `COPILOT_PROVIDER_API_KEY` must be non-empty but is ignored — the proxy
+   injects the real gcloud bearer token upstream. Available model ids include
+   `claude-opus-4-8`, `claude-opus-4-8#thinking`, `claude-sonnet-4-5`, and
+   `claude-sonnet-4-5#thinking` (or run `/model` inside the CLI).
+
+3. **Run Copilot CLI** from a trusted directory:
+
+   ```bash
+   copilot
+   ```
+
+The proxy binds to loopback only and never trusts the inbound
+`COPILOT_PROVIDER_API_KEY`. Stop it with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
+
+### Verifying the proxy is actually in use
+
+To test if the proxy is working:
+
+- The running `--proxy` process **logs each incoming request** as you chat.
+- The CLI's `/usage` command shows a per-model token breakdown for the session.
+
 ## Commands
 
 All commands are under the **Blinkk Agent Platform Chat Connector** category.
@@ -166,6 +225,24 @@ extension loaded.
 - `src/usage.ts` — local daily usage + cost tracking.
 - `bin/` — standalone CLI for `--login` / `--check` (runs raw `.ts` on Node ≥24).
 - `test/` — Vitest unit tests.
+
+### Troubleshooting
+
+**`ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` or `ERR_UNKNOWN_FILE_EXTENSION` when
+running the CLI / proxy.** The `bin/` scripts run TypeScript directly and require
+**Node ≥24**. A pinned version is provided in `.nvmrc`. If your shell defaults to
+an older Node, or aliases `pnpm`/`corepack` through another tool, the package
+manager shim can run under the wrong Node and crash before the script starts.
+
+Use `nvm` to run the script on the pinned version. For example:
+
+```bash
+nvm-exec node bin/google-agent-platform-connector.ts --proxy
+```
+
+`nvm-exec` reads `.nvmrc` and runs `node` directly (bypassing any `pnpm`
+shim/alias). Alternatively, `nvm use` first and then invoke `node` or
+`corepack pnpm run proxy`.
 
 ## Packaging & publishing
 
