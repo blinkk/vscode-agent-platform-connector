@@ -107,8 +107,7 @@ function renderStatusBar(): void {
 async function promptForProject(): Promise<void> {
   const value = await vscode.window.showInputBox({
     title: 'Set GCP project',
-    prompt:
-      'GCP project that Agent Platform (Vertex AI) usage is billed to.',
+    prompt: 'GCP project that Agent Platform (Vertex AI) usage is billed to.',
     placeHolder: 'my-gcp-project',
     value: connectorConfig.project || '',
     ignoreFocusOut: true,
@@ -161,7 +160,7 @@ async function showStatusMenu(): Promise<void> {
     },
     {
       label: `$(graph) Today's estimated cost: ${formatUsd(
-        getTodayUsage().costUsd
+        getTodayUsage().costUsd,
       )} (${getTodayUsage().requests} req)`,
     },
   ];
@@ -198,7 +197,7 @@ async function showStatusMenu(): Promise<void> {
     {
       title: 'Blinkk Agent Platform Chat Connector',
       placeHolder: 'Connector status and actions',
-    }
+    },
   );
   const command = (picked as {command?: string} | undefined)?.command;
   if (command) await vscode.commands.executeCommand(command);
@@ -277,7 +276,7 @@ function isInternalControlPart(part: unknown): boolean {
 
 /** Convert VS Code request messages into the connector's normalized shape. */
 function toNormMessages(
-  messages: readonly vscode.LanguageModelChatRequestMessage[]
+  messages: readonly vscode.LanguageModelChatRequestMessage[],
 ): NormMessage[] {
   const result: NormMessage[] = [];
   for (const msg of messages) {
@@ -335,7 +334,7 @@ function toNormMessages(
 }
 
 function toNormTools(
-  options: vscode.ProvideLanguageModelChatResponseOptions
+  options: vscode.ProvideLanguageModelChatResponseOptions,
 ): Pick<NormRequest, 'tools' | 'toolMode'> {
   const tools = options.tools?.map((t) => ({
     name: t.name,
@@ -356,12 +355,12 @@ function toNormTools(
  * permitted"). Drop any `_`-prefixed keys before they reach the wire.
  */
 function sanitizeModelOptions(
-  modelOptions: unknown
+  modelOptions: unknown,
 ): Record<string, unknown> | undefined {
   if (!modelOptions || typeof modelOptions !== 'object') return undefined;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(
-    modelOptions as Record<string, unknown>
+    modelOptions as Record<string, unknown>,
   )) {
     if (!k.startsWith('_')) out[k] = v;
   }
@@ -387,10 +386,8 @@ class GoogleAgentPlatformProvider implements vscode.LanguageModelChatProvider {
   }
 
   async provideLanguageModelChatInformation(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _options: {readonly silent: boolean},
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelChatInformation[]> {
     return getModels().map((m) => this.toChatInformation(m));
   }
@@ -415,13 +412,13 @@ class GoogleAgentPlatformProvider implements vscode.LanguageModelChatProvider {
     messages: readonly vscode.LanguageModelChatRequestMessage[],
     options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
   ): Promise<void> {
     const def = findModel(model.id, getModels());
     if (!def) {
       throw new Error(
         `Unknown model "${model.id}". Re-enable it under Manage Models, or ` +
-          'check your "customModels" setting.'
+          'check your "customModels" setting.',
       );
     }
 
@@ -447,8 +444,8 @@ class GoogleAgentPlatformProvider implements vscode.LanguageModelChatProvider {
             new vscode.LanguageModelToolCallPart(
               evt.id,
               evt.name,
-              (evt.input ?? {}) as object
-            )
+              (evt.input ?? {}) as object,
+            ),
           );
         }
       }
@@ -464,8 +461,7 @@ class GoogleAgentPlatformProvider implements vscode.LanguageModelChatProvider {
   async provideTokenCount(
     _model: vscode.LanguageModelChatInformation,
     text: string | vscode.LanguageModelChatRequestMessage,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): Promise<number> {
     return countMessageTokens(text);
   }
@@ -483,7 +479,7 @@ class GoogleAgentPlatformProvider implements vscode.LanguageModelChatProvider {
  * counted as zero) and adds a small per-part overhead for role/markup framing.
  */
 function countMessageTokens(
-  text: string | vscode.LanguageModelChatRequestMessage
+  text: string | vscode.LanguageModelChatRequestMessage,
 ): number {
   // ~4 chars per token for natural-language/code text.
   const CHARS_PER_TOKEN = 4;
@@ -542,7 +538,7 @@ function estimateImageTokens(part: unknown): number {
 
 export function activate(context: vscode.ExtensionContext): void {
   output = vscode.window.createOutputChannel(
-    'Blinkk Agent Platform Chat Connector'
+    'Blinkk Agent Platform Chat Connector',
   );
   context.subscriptions.push(output);
 
@@ -561,7 +557,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   statusBar = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
-    100
+    100,
   );
   // Hover reveals the info tooltip; clicking opens the same info as a menu.
   statusBar.command = 'googleAgentPlatform.showMenu';
@@ -581,7 +577,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const provider = new GoogleAgentPlatformProvider();
   context.subscriptions.push(
     provider,
-    vscode.lm.registerLanguageModelChatProvider(VENDOR, provider)
+    vscode.lm.registerLanguageModelChatProvider(VENDOR, provider),
   );
 
   // Re-apply config when the user edits settings; refresh model labels.
@@ -594,28 +590,28 @@ export function activate(context: vscode.ExtensionContext): void {
       provider.refresh();
       output.appendLine(
         `[extension] settings updated (project ${connectorConfig.project}, ` +
-          `auth ${connectorConfig.authMode})`
+          `auth ${connectorConfig.authMode})`,
       );
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'googleAgentPlatform.showMenu',
-      showStatusMenu
+      showStatusMenu,
     ),
     vscode.commands.registerCommand('googleAgentPlatform.openSettings', () =>
       vscode.commands.executeCommand(
         'workbench.action.openSettings',
-        SETTINGS_SECTION
-      )
+        SETTINGS_SECTION,
+      ),
     ),
     vscode.commands.registerCommand('googleAgentPlatform.showLogs', () =>
-      output.show(true)
+      output.show(true),
     ),
     vscode.commands.registerCommand(
       'googleAgentPlatform.setProject',
-      promptForProject
+      promptForProject,
     ),
     vscode.commands.registerCommand('googleAgentPlatform.signIn', () => {
       // Runs gcloud directly in a terminal (no npm package needed). The exact
@@ -640,7 +636,7 @@ export function activate(context: vscode.ExtensionContext): void {
         isolated
           ? `mkdir -p '${ISOLATED_GCLOUD_DIR}' && ` +
               `gcloud auth login --update-adc --brief${account}`
-          : `gcloud auth application-default login --scopes="${scopes}"${account}`
+          : `gcloud auth application-default login --scopes="${scopes}"${account}`,
       );
     }),
     vscode.commands.registerCommand('googleAgentPlatform.check', async () => {
@@ -651,16 +647,16 @@ export function activate(context: vscode.ExtensionContext): void {
         output.appendLine('[extension] model check complete');
       } catch (e) {
         output.appendLine(
-          `[extension] model check failed: ${e instanceof Error ? e.message : e}`
+          `[extension] model check failed: ${e instanceof Error ? e.message : e}`,
         );
       }
-    })
+    }),
   );
 
   output.appendLine(
     `[extension] registered ${getModels().length} models under vendor ` +
       `"${VENDOR}" (project ${connectorConfig.project}, ` +
-      `auth ${connectorConfig.authMode})`
+      `auth ${connectorConfig.authMode})`,
   );
 }
 

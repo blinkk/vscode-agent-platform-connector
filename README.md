@@ -40,6 +40,24 @@ A **Blinkk Agent Platform Chat Connector** status bar item shows the active
 project/auth and **today's estimated cost**, and its output channel mirrors
 provider logs.
 
+### Image handling (Claude)
+
+Claude on Vertex AI applies a **stricter per-image dimension limit** (e.g.
+2576px on the long edge) once a single request carries more than 20 image (and
+document) blocks — its "many-image requests" mode. Below that threshold Claude
+silently downscales oversized images; at or above it, oversized images are
+**rejected** with an `invalid_request_error`. Because the rejected image stays in
+the conversation history, every later turn re-sends it and fails too, which would
+otherwise leave the chat permanently stuck.
+
+To prevent this, the connector keeps each Claude request **at or below 20
+images**: it retains the most recent images as real attachments and replaces
+older ones with a short text placeholder
+(`[N earlier images omitted to stay within image limits]`). This drops the
+stricter limit so any remaining large image is downscaled automatically rather
+than rejected. The trimming applies only to Claude models and is logged to the
+output channel.
+
 ## Prerequisites
 
 Before the connector can serve any model you need three things set up in the GCP
@@ -47,12 +65,14 @@ project that usage will be billed to. Each step links straight to where you can
 satisfy it.
 
 1. **Install the `gcloud` CLI** and sign in.
+
    - Install: <https://cloud.google.com/sdk/docs/install>
    - Then either run `gcloud auth application-default login` (ADC mode) or use
      the extension's **Sign In (isolated credentials)** command.
 
 2. **Enable the Vertex AI / Agent Platform API** (`aiplatform.googleapis.com`)
    in your project.
+
    - Enable it here:
      <https://console.cloud.google.com/apis/library/aiplatform.googleapis.com>
    - Your account also needs the **Vertex AI User** role

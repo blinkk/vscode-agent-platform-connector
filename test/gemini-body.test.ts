@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {describe, expect, it} from 'vitest';
 
-import type { ModelDef } from '../src/catalog.ts';
-import { buildGeminiBody } from '../src/vertex.ts';
-import type { NormRequest } from '../src/vertex.ts';
+import type {ModelDef} from '../src/catalog.ts';
+import {buildGeminiBody} from '../src/vertex.ts';
+import type {NormRequest} from '../src/vertex.ts';
 
 const model: ModelDef = {
   id: 'google/gemini-3.5-flash',
@@ -13,21 +13,20 @@ const model: ModelDef = {
 };
 
 function geminiMessages(req: NormRequest): Array<Record<string, any>> {
-  return (
-    buildGeminiBody(model, req) as { messages: Array<Record<string, any>> }
-  ).messages;
+  return (buildGeminiBody(model, req) as {messages: Array<Record<string, any>>})
+    .messages;
 }
 
 describe('buildGeminiBody thought signatures', () => {
   it('attaches the skip sentinel when a rebuilt tool call has no signature', () => {
     const messages = geminiMessages({
       messages: [
-        { role: 'user', text: 'hi' },
+        {role: 'user', text: 'hi'},
         {
           role: 'assistant',
-          toolCalls: [{ id: 'call_1', name: 'do_thing', input: { a: 1 } }],
+          toolCalls: [{id: 'call_1', name: 'do_thing', input: {a: 1}}],
         },
-        { role: 'user', toolResults: [{ callId: 'call_1', content: 'ok' }] },
+        {role: 'user', toolResults: [{callId: 'call_1', content: 'ok'}]},
       ],
     });
 
@@ -44,7 +43,7 @@ describe('buildGeminiBody thought signatures', () => {
         {
           role: 'assistant',
           toolCalls: [
-            { id: 'call_1', name: 'do_thing', input: {}, signature: 'SIG_A' },
+            {id: 'call_1', name: 'do_thing', input: {}, signature: 'SIG_A'},
           ],
         },
       ],
@@ -61,7 +60,7 @@ describe('buildGeminiBody thought signatures', () => {
       messages: [
         {
           role: 'assistant',
-          toolCalls: [{ id: 'call_x', name: 'fn', input: { q: 'v' } }],
+          toolCalls: [{id: 'call_x', name: 'fn', input: {q: 'v'}}],
         },
       ],
     });
@@ -79,17 +78,17 @@ describe('buildGeminiBody image attachments', () => {
         {
           role: 'user',
           text: 'what is this?',
-          images: [{ mimeType: 'image/png', data: 'AAAA' }],
+          images: [{mimeType: 'image/png', data: 'AAAA'}],
         },
       ],
     });
 
     const user = messages.find((m) => m.role === 'user')!;
     expect(Array.isArray(user.content)).toBe(true);
-    expect(user.content[0]).toEqual({ type: 'text', text: 'what is this?' });
+    expect(user.content[0]).toEqual({type: 'text', text: 'what is this?'});
     expect(user.content[1]).toEqual({
       type: 'image_url',
-      image_url: { url: 'data:image/png;base64,AAAA' },
+      image_url: {url: 'data:image/png;base64,AAAA'},
     });
   });
 });

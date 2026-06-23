@@ -23,9 +23,9 @@ You only do the setup below **once**.
 
 ## 1. Create a Marketplace PAT
 
-1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sigin1. Sign in to 1. Sign in to 1-> **New 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Se1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1.  1. Sign in to 1. Sign in to 1. Sign in to 1. Sign intore the PAT as a GitHub repo secret
+1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sigin1. Sign in to 1. Sign in to 1-> \*\*New 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Se1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign in to 1. 1. Sign in to 1. Sign in to 1. Sign in to 1. Sign intore the PAT as a GitHub repo secret
 
-```bash
+````bash
 gh secret set VSCE_PAT --repogh secret set VSCE_PAT --repogh secret set VSCE_PAT --repogh secret set VSC## 3gh secret set VSCE_PAT --repogh secret set VSCE_PAT --repogh secret set VSCEpegh secret set VSCE_PAT --repogh secret set VSCE_PAT --reecrgh secret set VSCE_PAT -et OVSXgh secret set VSCE_PAT --repogh-platgh secret set VSCE_PAT --repogh secret set VSCE_PAT --repogh secret set V.
 gh secret set VSCE_PAT -e flow
 
@@ -43,7 +43,7 @@ then run the publish script:
 ```bash
 export VSCE_PAT=...        # or AZURE_PAT
 node ./scripts/release-ci.mjs
-```
+````
 
 ## Troubleshooting
 

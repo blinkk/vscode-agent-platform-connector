@@ -32,18 +32,12 @@
  * is the gcloud token supplied inside `vertex.ts`.
  */
 
-import { createServer } from 'node:http';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import {createServer} from 'node:http';
+import type {IncomingMessage, ServerResponse} from 'node:http';
 
-import { findModel, isClaudeModel, loadFileConfig } from './catalog.ts';
-import type { ModelDef } from './catalog.ts';
-import {
-  config,
-  getModels,
-  log,
-  setCustomModels,
-  streamChat,
-} from './vertex.ts';
+import {findModel, isClaudeModel, loadFileConfig} from './catalog.ts';
+import type {ModelDef} from './catalog.ts';
+import {config, getModels, log, setCustomModels, streamChat} from './vertex.ts';
 import type {
   NormMessage,
   NormRequest,
@@ -69,7 +63,7 @@ interface AnthropicTextBlock {
 }
 interface AnthropicImageBlock {
   type: 'image';
-  source: { type: 'base64'; media_type: string; data: string };
+  source: {type: 'base64'; media_type: string; data: string};
 }
 interface AnthropicToolUseBlock {
   type: 'tool_use';
@@ -102,10 +96,10 @@ interface AnthropicTool {
 
 interface AnthropicMessagesRequest {
   model?: string;
-  system?: string | Array<{ type: string; text?: string }>;
+  system?: string | Array<{type: string; text?: string}>;
   messages?: AnthropicMessage[];
   tools?: AnthropicTool[];
-  tool_choice?: { type?: string };
+  tool_choice?: {type?: string};
   max_tokens?: number;
   stream?: boolean;
 }
@@ -131,7 +125,7 @@ function toolResultContentText(content: unknown): string {
       .map((piece) => {
         if (typeof piece === 'string') return piece;
         if (piece && typeof piece === 'object') {
-          const p = piece as { type?: string; text?: string };
+          const p = piece as {type?: string; text?: string};
           if (p.type === 'text' && typeof p.text === 'string') return p.text;
           try {
             return JSON.stringify(piece);
@@ -158,14 +152,14 @@ function toNormMessages(req: AnthropicMessagesRequest): NormMessage[] {
   const out: NormMessage[] = [];
 
   const sys = systemText(req.system);
-  if (sys) out.push({ role: 'system', text: sys });
+  if (sys) out.push({role: 'system', text: sys});
 
   for (const msg of req.messages ?? []) {
     const role: NormMessage['role'] =
       msg.role === 'assistant' ? 'assistant' : 'user';
 
     if (typeof msg.content === 'string') {
-      if (msg.content) out.push({ role, text: msg.content });
+      if (msg.content) out.push({role, text: msg.content});
       continue;
     }
 
@@ -175,17 +169,17 @@ function toNormMessages(req: AnthropicMessagesRequest): NormMessage[] {
     const toolResults: NormToolResult[] = [];
 
     for (const block of msg.content ?? []) {
-      const type = (block as { type?: string }).type;
+      const type = (block as {type?: string}).type;
       if (type === 'text') {
         text += (block as AnthropicTextBlock).text ?? '';
       } else if (type === 'image') {
         const src = (block as AnthropicImageBlock).source;
         if (src?.type === 'base64' && src.media_type && src.data) {
-          images.push({ mimeType: src.media_type, data: src.data });
+          images.push({mimeType: src.media_type, data: src.data});
         }
       } else if (type === 'tool_use') {
         const b = block as AnthropicToolUseBlock;
-        toolCalls.push({ id: b.id, name: b.name, input: b.input ?? {} });
+        toolCalls.push({id: b.id, name: b.name, input: b.input ?? {}});
       } else if (type === 'tool_result') {
         const b = block as AnthropicToolResultBlock;
         toolResults.push({
@@ -197,7 +191,7 @@ function toNormMessages(req: AnthropicMessagesRequest): NormMessage[] {
 
     // tool_result blocks must travel as their own user-role turn to keep the
     // assistant tool_use -> user tool_result adjacency the upstream expects.
-    if (toolResults.length) out.push({ role: 'user', toolResults });
+    if (toolResults.length) out.push({role: 'user', toolResults});
     if (text || images.length || toolCalls.length) {
       out.push({
         role,
@@ -224,7 +218,7 @@ function toNormTools(
     req.tool_choice?.type === 'any' || req.tool_choice?.type === 'tool'
       ? ('required' as const)
       : ('auto' as const);
-  return { tools, toolMode };
+  return {tools, toolMode};
 }
 
 /**
@@ -269,11 +263,7 @@ function claudeModelIds(): string[] {
 /* -------------------------------------------------------------------------- */
 
 /** Write a single Anthropic SSE frame: an `event:` line plus a `data:` line. */
-function writeSse(
-  res: ServerResponse,
-  event: string,
-  data: unknown,
-): void {
+function writeSse(res: ServerResponse, event: string, data: unknown): void {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
@@ -324,7 +314,7 @@ async function streamAnthropicResponse(
       content: [],
       stop_reason: null,
       stop_sequence: null,
-      usage: { input_tokens: 0, output_tokens: 0 },
+      usage: {input_tokens: 0, output_tokens: 0},
     },
   });
 
@@ -334,7 +324,7 @@ async function streamAnthropicResponse(
       writeSse(res, 'content_block_start', {
         type: 'content_block_start',
         index: textBlockIndex,
-        content_block: { type: 'text', text: '' },
+        content_block: {type: 'text', text: ''},
       });
     }
     return textBlockIndex;
@@ -358,7 +348,7 @@ async function streamAnthropicResponse(
         writeSse(res, 'content_block_delta', {
           type: 'content_block_delta',
           index,
-          delta: { type: 'text_delta', text: evt.text },
+          delta: {type: 'text_delta', text: evt.text},
         });
       } else if (evt.type === 'usage') {
         inputTokens = evt.inputTokens;
@@ -398,10 +388,10 @@ async function streamAnthropicResponse(
 
     writeSse(res, 'message_delta', {
       type: 'message_delta',
-      delta: { stop_reason: stopReason, stop_sequence: null },
-      usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+      delta: {stop_reason: stopReason, stop_sequence: null},
+      usage: {input_tokens: inputTokens, output_tokens: outputTokens},
     });
-    writeSse(res, 'message_stop', { type: 'message_stop' });
+    writeSse(res, 'message_stop', {type: 'message_stop'});
     log(
       `[cli-proxy] response model=${model.id} stop=${stopReason} ` +
         `in_tokens=${inputTokens} out_tokens=${outputTokens}`,
@@ -413,7 +403,7 @@ async function streamAnthropicResponse(
     // event (the CLI shows it); otherwise fall through to the HTTP error path.
     writeSse(res, 'error', {
       type: 'error',
-      error: { type: 'api_error', message },
+      error: {type: 'api_error', message},
     });
   } finally {
     res.end();
@@ -444,9 +434,7 @@ function readJsonBody(req: IncomingMessage): Promise<AnthropicMessagesRequest> {
         resolve(raw ? JSON.parse(raw) : {});
       } catch (e) {
         reject(
-          new Error(
-            `invalid JSON body: ${e instanceof Error ? e.message : e}`,
-          ),
+          new Error(`invalid JSON body: ${e instanceof Error ? e.message : e}`),
         );
       }
     });
@@ -455,20 +443,19 @@ function readJsonBody(req: IncomingMessage): Promise<AnthropicMessagesRequest> {
 }
 
 /** Send a JSON HTTP error in the Anthropic error envelope shape. */
-function sendError(
-  res: ServerResponse,
-  status: number,
-  message: string,
-): void {
+function sendError(res: ServerResponse, status: number, message: string): void {
   if (res.headersSent) {
     res.end();
     return;
   }
-  res.writeHead(status, { 'content-type': 'application/json' });
+  res.writeHead(status, {'content-type': 'application/json'});
   res.end(
     JSON.stringify({
       type: 'error',
-      error: { type: status === 404 ? 'not_found_error' : 'invalid_request_error', message },
+      error: {
+        type: status === 404 ? 'not_found_error' : 'invalid_request_error',
+        message,
+      },
     }),
   );
 }
@@ -542,7 +529,7 @@ async function respondNonStreaming(
         outputTokens = evt.outputTokens;
       } else {
         if (text) {
-          content.push({ type: 'text', text });
+          content.push({type: 'text', text});
           text = '';
         }
         stopReason = 'tool_use';
@@ -554,7 +541,7 @@ async function respondNonStreaming(
         });
       }
     }
-    if (text) content.push({ type: 'text', text });
+    if (text) content.push({type: 'text', text});
   } catch (e) {
     sendError(res, 502, e instanceof Error ? e.message : String(e));
     return;
@@ -564,7 +551,7 @@ async function respondNonStreaming(
     res.end();
     return;
   }
-  res.writeHead(200, { 'content-type': 'application/json' });
+  res.writeHead(200, {'content-type': 'application/json'});
   res.end(
     JSON.stringify({
       id: randomMessageId(),
@@ -574,7 +561,7 @@ async function respondNonStreaming(
       content,
       stop_reason: stopReason,
       stop_sequence: null,
-      usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+      usage: {input_tokens: inputTokens, output_tokens: outputTokens},
     }),
   );
 }
@@ -595,7 +582,7 @@ export function startCliProxy(port = resolvePort()): Promise<{
     const path = url.split('?')[0];
 
     if (req.method === 'GET' && (path === '/health' || path === '/')) {
-      res.writeHead(200, { 'content-type': 'application/json' });
+      res.writeHead(200, {'content-type': 'application/json'});
       res.end(
         JSON.stringify({
           status: 'ok',
@@ -610,7 +597,9 @@ export function startCliProxy(port = resolvePort()): Promise<{
     // The Anthropic provider POSTs to `<base>/v1/messages`.
     if (req.method === 'POST' && path.endsWith('/v1/messages')) {
       handleMessages(req, res).catch((e) => {
-        log(`[cli-proxy] unhandled error: ${e instanceof Error ? e.message : e}`);
+        log(
+          `[cli-proxy] unhandled error: ${e instanceof Error ? e.message : e}`,
+        );
         sendError(res, 500, 'internal proxy error');
       });
       return;

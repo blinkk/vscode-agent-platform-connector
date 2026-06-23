@@ -28,7 +28,7 @@
  *   GOOGLE_AGENT_PLATFORM_DEBUG=1          verbose logging
  */
 
-import { spawn } from 'node:child_process';
+import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 
 import {
@@ -43,7 +43,7 @@ import {
   resolveModels,
   upstreamModelId,
 } from './catalog.ts';
-import type { AuthMode, ConnectorConfig, ModelDef } from './catalog.ts';
+import type {AuthMode, ConnectorConfig, ModelDef} from './catalog.ts';
 
 /* -------------------------------------------------------------------------- */
 /* Config                                                                     */
@@ -175,7 +175,7 @@ export function applyConfigOverrides(
   if (typeof overrides.debug === 'boolean' && !envLocked.has('debug')) {
     config.debug = overrides.debug;
   }
-  if (authChanged) tokenCache = { value: '', expiresAt: 0 };
+  if (authChanged) tokenCache = {value: '', expiresAt: 0};
   return authChanged;
 }
 
@@ -206,19 +206,19 @@ const debug = (...args: unknown[]) => {
 /* Access token                                                               */
 /* -------------------------------------------------------------------------- */
 
-let tokenCache = { value: '', expiresAt: 0 };
+let tokenCache = {value: '', expiresAt: 0};
 
 /**
  * Build the `gcloud` argv + environment for the active auth mode.
  *   - 'adc':      the user's global Application Default Credentials.
  *   - 'isolated': the connector's own credential store (CLOUDSDK_CONFIG).
  */
-function gcloudTokenInvocation(): { args: string[]; env: NodeJS.ProcessEnv } {
+function gcloudTokenInvocation(): {args: string[]; env: NodeJS.ProcessEnv} {
   const account = config.authAccount ? [`--account=${config.authAccount}`] : [];
   if (config.authMode === 'isolated') {
     return {
       args: ['auth', 'print-access-token', ...account],
-      env: { ...process.env, CLOUDSDK_CONFIG: ISOLATED_GCLOUD_DIR },
+      env: {...process.env, CLOUDSDK_CONFIG: ISOLATED_GCLOUD_DIR},
     };
   }
   return {
@@ -228,7 +228,7 @@ function gcloudTokenInvocation(): { args: string[]; env: NodeJS.ProcessEnv } {
 }
 
 function fetchAccessToken(): Promise<string> {
-  const { args, env } = gcloudTokenInvocation();
+  const {args, env} = gcloudTokenInvocation();
   return new Promise((resolve, reject) => {
     const child = spawn('gcloud', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -266,7 +266,7 @@ export async function getAccessToken(forceRefresh = false): Promise<string> {
   }
   const value = await fetchAccessToken();
   // ADC access tokens last ~60 min; refresh proactively at 50 min.
-  tokenCache = { value, expiresAt: now + 50 * 60 * 1000 };
+  tokenCache = {value, expiresAt: now + 50 * 60 * 1000};
   debug('refreshed access token');
   return value;
 }
@@ -335,7 +335,7 @@ export interface NormRequest {
 
 /** A normalized streaming event emitted while a response is produced. */
 export type StreamEvent =
-  | { type: 'text'; text: string }
+  | {type: 'text'; text: string}
   | {
       type: 'tool-call';
       id: string;
@@ -343,7 +343,7 @@ export type StreamEvent =
       input: unknown;
       signature?: string;
     }
-  | { type: 'usage'; inputTokens: number; outputTokens: number };
+  | {type: 'usage'; inputTokens: number; outputTokens: number};
 
 /* -------------------------------------------------------------------------- */
 /* Upstream body construction                                                 */
@@ -377,7 +377,7 @@ export function buildGeminiBody(model: ModelDef, req: NormRequest): unknown {
         tool_calls: m.toolCalls.map((t) => ({
           id: t.id,
           type: 'function',
-          function: { name: t.name, arguments: JSON.stringify(t.input ?? {}) },
+          function: {name: t.name, arguments: JSON.stringify(t.input ?? {})},
           // Gemini 3+ requires the thought signature echoed back on every
           // function call of the current turn, or it returns a 400. The real
           // signature is lost across VS Code's tool-call round-trip, so fall
@@ -391,18 +391,18 @@ export function buildGeminiBody(model: ModelDef, req: NormRequest): unknown {
       });
     } else if (m.images?.length) {
       const parts: Array<Record<string, unknown>> = [];
-      if (m.text) parts.push({ type: 'text', text: m.text });
+      if (m.text) parts.push({type: 'text', text: m.text});
       for (const img of m.images) {
         parts.push({
           type: 'image_url',
-          image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+          image_url: {url: `data:${img.mimeType};base64,${img.data}`},
         });
       }
-      messages.push({ role: m.role, content: parts });
+      messages.push({role: m.role, content: parts});
     } else if (m.text !== undefined && m.text !== '') {
-      messages.push({ role: m.role, content: m.text });
+      messages.push({role: m.role, content: m.text});
     } else if (!m.toolResults?.length) {
-      messages.push({ role: m.role, content: '' });
+      messages.push({role: m.role, content: ''});
     }
   }
 
@@ -410,7 +410,7 @@ export function buildGeminiBody(model: ModelDef, req: NormRequest): unknown {
     model: upstreamModelId(model),
     messages,
     stream: true,
-    stream_options: { include_usage: true },
+    stream_options: {include_usage: true},
     max_tokens: req.maxOutputTokens || model.maxOutputTokens,
   };
   if (model.thinking) {
@@ -422,12 +422,85 @@ export function buildGeminiBody(model: ModelDef, req: NormRequest): unknown {
       function: {
         name: t.name,
         description: t.description,
-        parameters: t.inputSchema || { type: 'object', properties: {} },
+        parameters: t.inputSchema || {type: 'object', properties: {}},
       },
     }));
     body.tool_choice = req.toolMode === 'required' ? 'required' : 'auto';
   }
-  return { ...body, ...req.modelOptions };
+  return {...body, ...req.modelOptions};
+}
+
+/**
+ * Anthropic applies a *stricter* per-image dimension limit (the "many-image
+ * requests" cap, e.g. 2576px on the long edge) once a single request carries
+ * more than this many image (and document) blocks. Below the threshold Claude
+ * silently downscales oversized images; at or above it, oversized images are
+ * rejected with an `invalid_request_error`. Because the rejected image stays in
+ * the conversation history, every subsequent turn re-sends it and fails too,
+ * leaving the conversation in an unrecoverable state.
+ *
+ * See https://docs.anthropic.com/en/docs/build-with-claude/vision ("General
+ * limits").
+ */
+const CLAUDE_MANY_IMAGE_THRESHOLD = 20;
+
+/**
+ * Keep a Claude request below the many-image threshold so its normal automatic
+ * downscaling applies (instead of hard-rejecting oversized images). When the
+ * request carries more than {@link CLAUDE_MANY_IMAGE_THRESHOLD} images, retain
+ * the most recent ones as real image blocks and replace older ones with a short
+ * text placeholder. Returns the same request when no pruning is needed.
+ */
+export function pruneClaudeImages(req: NormRequest): NormRequest {
+  let total = 0;
+  for (const m of req.messages) total += m.images?.length ?? 0;
+  if (total <= CLAUDE_MANY_IMAGE_THRESHOLD) return req;
+
+  // Walk newest-to-oldest, keeping the most recent images as real blocks and
+  // dropping the rest (replaced with a placeholder on their message).
+  let kept = 0;
+  let dropped = 0;
+  const messages = [...req.messages]
+    .reverse()
+    .map((m) => {
+      if (!m.images?.length) return m;
+      const room = CLAUDE_MANY_IMAGE_THRESHOLD - kept;
+      if (room <= 0) {
+        dropped += m.images.length;
+        return stripImages(m, m.images.length);
+      }
+      if (m.images.length <= room) {
+        kept += m.images.length;
+        return m;
+      }
+      // Partially keep: this message straddles the threshold. Keep the most
+      // recent images within the message (the tail of the array).
+      const keepCount = room;
+      const dropCount = m.images.length - keepCount;
+      kept += keepCount;
+      dropped += dropCount;
+      return {...m, images: m.images.slice(dropCount)};
+    })
+    .reverse();
+
+  log(
+    `claude many-image safeguard: kept ${kept} most recent image(s), ` +
+      `replaced ${dropped} older image(s) with a placeholder ` +
+      `(threshold ${CLAUDE_MANY_IMAGE_THRESHOLD})`,
+  );
+  return {...req, messages};
+}
+
+/** Drop `count` images from a message, appending a placeholder note. */
+function stripImages(m: NormMessage, count: number): NormMessage {
+  const note =
+    count === 1
+      ? '[1 earlier image omitted to stay within image limits]'
+      : `[${count} earlier images omitted to stay within image limits]`;
+  const text = m.text ? `${m.text}\n\n${note}` : note;
+  const rest = {...m};
+  delete rest.images;
+  return {...rest, text};
 }
 
 /** Build an Anthropic Messages body for a Claude model. */
@@ -452,7 +525,7 @@ function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
       continue;
     }
     const content: Array<Record<string, unknown>> = [];
-    if (m.text) content.push({ type: 'text', text: m.text });
+    if (m.text) content.push({type: 'text', text: m.text});
     if (m.images?.length) {
       for (const img of m.images) {
         content.push({
@@ -475,7 +548,7 @@ function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
         });
       }
     }
-    if (content.length) messages.push({ role: m.role, content });
+    if (content.length) messages.push({role: m.role, content});
   }
 
   const body: Record<string, unknown> = {
@@ -486,19 +559,19 @@ function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
   };
   if (system) body.system = system;
   if (model.thinking) {
-    body.thinking = { type: 'adaptive' };
-    body.output_config = { effort: model.thinking.effort || 'high' };
+    body.thinking = {type: 'adaptive'};
+    body.output_config = {effort: model.thinking.effort || 'high'};
   }
   if (req.tools?.length) {
     body.tools = req.tools.map((t) => ({
       name: t.name,
       description: t.description,
-      input_schema: t.inputSchema || { type: 'object', properties: {} },
+      input_schema: t.inputSchema || {type: 'object', properties: {}},
     }));
     body.tool_choice =
-      req.toolMode === 'required' ? { type: 'any' } : { type: 'auto' };
+      req.toolMode === 'required' ? {type: 'any'} : {type: 'auto'};
   }
-  return { ...body, ...req.modelOptions };
+  return {...body, ...req.modelOptions};
 }
 
 /* -------------------------------------------------------------------------- */
@@ -517,9 +590,9 @@ async function* sseData(
   try {
     for (;;) {
       if (signal?.aborted) return;
-      const { done, value } = await reader.read();
+      const {done, value} = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value, {stream: true});
       let nl: number;
       // SSE frames are separated by blank lines; lines start with "data:".
       while ((nl = buffer.indexOf('\n')) >= 0) {
@@ -607,7 +680,12 @@ export function explainHttpError(
   // A 400 caused by exceeding the model's context window is common and has
   // nothing to do with project/location/model config, so give it a dedicated,
   // actionable message instead of the generic "check your settings" hint.
-  if (status === 400 && /prompt is too long|maximum.*tokens|token.*maximum|exceeds the maximum number of tokens|input token count/i.test(body)) {
+  if (
+    status === 400 &&
+    /prompt is too long|maximum.*tokens|token.*maximum|exceeds the maximum number of tokens|input token count/i.test(
+      body,
+    )
+  ) {
     const counts = body.match(/(\d[\d,]{3,})\s*tokens?\s*>\s*(\d[\d,]{3,})/i);
     const over = counts ? ` (${counts[1]} > ${counts[2]} tokens)` : '';
     return (
@@ -673,7 +751,7 @@ async function* streamGemini(
   // (plus the Gemini thought signature, when present on the first FC part).
   const toolAcc = new Map<
     number,
-    { id: string; name: string; args: string; signature?: string }
+    {id: string; name: string; args: string; signature?: string}
   >();
 
   for await (const data of sseData(res, signal)) {
@@ -695,12 +773,12 @@ async function* streamGemini(
     const delta = json?.choices?.[0]?.delta;
     if (!delta) continue;
     if (typeof delta.content === 'string' && delta.content) {
-      yield { type: 'text', text: delta.content };
+      yield {type: 'text', text: delta.content};
     }
     if (Array.isArray(delta.tool_calls)) {
       for (const tc of delta.tool_calls) {
         const idx = tc.index ?? 0;
-        const acc = toolAcc.get(idx) || { id: '', name: '', args: '' };
+        const acc = toolAcc.get(idx) || {id: '', name: '', args: ''};
         if (tc.id) acc.id = tc.id;
         if (tc.function?.name) acc.name = tc.function.name;
         if (tc.function?.arguments) acc.args += tc.function.arguments;
@@ -741,7 +819,7 @@ async function* streamClaude(
   // Track the current content block so input_json_delta can be accumulated.
   const blocks = new Map<
     number,
-    { type: string; id?: string; name?: string; json: string }
+    {type: string; id?: string; name?: string; json: string}
   >();
   let inputTokens = 0;
   let outputTokens = 0;
@@ -780,7 +858,7 @@ async function* streamClaude(
       case 'content_block_delta': {
         const d = evt.delta || {};
         if (d.type === 'text_delta' && d.text) {
-          yield { type: 'text', text: d.text };
+          yield {type: 'text', text: d.text};
         } else if (d.type === 'input_json_delta') {
           const b = blocks.get(evt.index);
           if (b) b.json += d.partial_json || '';
@@ -805,7 +883,7 @@ async function* streamClaude(
   }
 
   if (inputTokens || outputTokens) {
-    yield { type: 'usage', inputTokens, outputTokens };
+    yield {type: 'usage', inputTokens, outputTokens};
   }
 }
 
@@ -919,7 +997,7 @@ export function fitRequestToContext(
     `context safeguard: trimmed ${removed} oldest message(s); ` +
       `~${total} est tokens <= ${budget} budget (limit ${limit})`,
   );
-  return { ...req, messages: trimmed };
+  return {...req, messages: trimmed};
 }
 
 export function streamChat(
@@ -929,7 +1007,7 @@ export function streamChat(
 ): AsyncIterable<StreamEvent> {
   const fitted = fitRequestToContext(model, req);
   return model.api === 'messages'
-    ? streamClaude(model, fitted, signal)
+    ? streamClaude(model, pruneClaudeImages(fitted), signal)
     : streamGemini(model, fitted, signal);
 }
 
@@ -962,12 +1040,12 @@ export async function runCheck(): Promise<void> {
     const body = isClaude
       ? {
           anthropic_version: 'vertex-2023-10-16',
-          messages: [{ role: 'user', content: 'ping' }],
+          messages: [{role: 'user', content: 'ping'}],
           max_tokens: 8,
         }
       : {
           model: upstream,
-          messages: [{ role: 'user', content: 'ping' }],
+          messages: [{role: 'user', content: 'ping'}],
           max_tokens: 8,
         };
     const r = await fetch(url, {
@@ -994,7 +1072,7 @@ export async function runCheck(): Promise<void> {
  */
 export function runLogin(): Promise<void> {
   return new Promise((resolve, reject) => {
-    fs.mkdirSync(ISOLATED_GCLOUD_DIR, { recursive: true });
+    fs.mkdirSync(ISOLATED_GCLOUD_DIR, {recursive: true});
     log(`logging in to isolated credential store at ${ISOLATED_GCLOUD_DIR}`);
     const child = spawn(
       'gcloud',
@@ -1007,7 +1085,7 @@ export function runLogin(): Promise<void> {
       ],
       {
         stdio: 'inherit',
-        env: { ...process.env, CLOUDSDK_CONFIG: ISOLATED_GCLOUD_DIR },
+        env: {...process.env, CLOUDSDK_CONFIG: ISOLATED_GCLOUD_DIR},
       },
     );
     child.on('error', reject);

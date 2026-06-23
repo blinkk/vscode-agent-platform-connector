@@ -81,7 +81,11 @@ describe('normalizeCustomModel', () => {
 
   it('throws on an invalid api', () => {
     expect(() =>
-      normalizeCustomModel({id: 'google/foo', name: 'Foo', api: 'bogus' as never})
+      normalizeCustomModel({
+        id: 'google/foo',
+        name: 'Foo',
+        api: 'bogus' as never,
+      }),
     ).toThrow(/api/);
   });
 
@@ -154,23 +158,23 @@ describe('url helpers', () => {
 
   it('vertexBase uses a regional host otherwise', () => {
     expect(vertexBase('us-east5')).toBe(
-      'https://us-east5-aiplatform.googleapis.com'
+      'https://us-east5-aiplatform.googleapis.com',
     );
   });
 
   it('chatCompletionsUrl points at the openapi endpoint', () => {
     expect(chatCompletionsUrl('p', 'global')).toBe(
       'https://aiplatform.googleapis.com/v1/projects/p/locations/global' +
-        '/endpoints/openapi/chat/completions'
+        '/endpoints/openapi/chat/completions',
     );
   });
 
   it('anthropicUrl selects rawPredict vs streamRawPredict', () => {
     expect(anthropicUrl('p', 'global', 'claude-opus-4-8', false)).toMatch(
-      /:rawPredict$/
+      /:rawPredict$/,
     );
     expect(anthropicUrl('p', 'global', 'claude-opus-4-8', true)).toMatch(
-      /:streamRawPredict$/
+      /:streamRawPredict$/,
     );
   });
 

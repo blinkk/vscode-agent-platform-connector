@@ -15,12 +15,17 @@
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 
-const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));
+const pkg = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url)),
+);
 const vsix = `${pkg.name}.vsix`;
 
 function run(cmd, args, env) {
   console.log(`$ ${cmd} ${args.join(' ')}`);
-  execFileSync(cmd, args, {stdio: 'inherit', env: {...process.env, ...env}});
+  execFileSync(cmd, args, {
+    stdio: 'inherit',
+    env: {...process.env, ...env},
+  });
 }
 
 /**
@@ -43,7 +48,7 @@ function runAllowingAlreadyPublished(cmd, args, registry, env) {
     if (/already exists/i.test(output)) {
       console.log(
         `${pkg.name} v${pkg.version} is already published to ${registry}; ` +
-          'skipping.'
+          'skipping.',
       );
       return;
     }
@@ -65,14 +70,14 @@ if (!pat) {
   throw new Error(
     'No Marketplace PAT found. Set VSCE_PAT (or AZURE_PAT) with a token that ' +
       'has the Marketplace > Manage scope, as a repo secret in CI or in the ' +
-      'environment locally.'
+      'environment locally.',
   );
 }
 runAllowingAlreadyPublished(
   'pnpm',
   ['exec', 'vsce', 'publish', '--no-dependencies', '--packagePath', vsix],
   'the VS Code Marketplace',
-  {VSCE_PAT: pat}
+  {VSCE_PAT: pat},
 );
 
 // 3. Publish to Open VSX (optional).
@@ -80,7 +85,7 @@ if (process.env.OVSX_PAT) {
   runAllowingAlreadyPublished(
     'pnpm',
     ['exec', 'ovsx', 'publish', vsix, '--no-dependencies'],
-    'Open VSX'
+    'Open VSX',
   );
 } else {
   console.log('OVSX_PAT not set; skipping Open VSX publish.');

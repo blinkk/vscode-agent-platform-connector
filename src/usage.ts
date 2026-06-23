@@ -96,7 +96,7 @@ export function getTodayUsage(): DailyUsage {
 export function recordUsage(
   model: ModelDef | undefined,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
 ): void {
   ensureToday();
   current.inputTokens += inputTokens || 0;

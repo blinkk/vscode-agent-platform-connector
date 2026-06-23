@@ -137,7 +137,7 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1048576,
     maxOutputTokens: 65535,
     vision: true,
-    pricing: { input: 0.3, output: 2.5 },
+    pricing: {input: 0.3, output: 2.5},
   },
   {
     id: 'claude-opus-4-8',
@@ -146,7 +146,7 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: { input: 15, output: 75 },
+    pricing: {input: 15, output: 75},
   },
   {
     // Same upstream model as claude-opus-4-8, but the proxy enables extended
@@ -155,11 +155,11 @@ export const MODELS: readonly ModelDef[] = [
     upstream: 'claude-opus-4-8',
     name: 'Claude Opus 4.8 – High',
     api: 'messages',
-    thinking: { effort: 'high' },
+    thinking: {effort: 'high'},
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: { input: 15, output: 75 },
+    pricing: {input: 15, output: 75},
   },
   {
     id: 'claude-sonnet-4-5',
@@ -168,18 +168,18 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: { input: 3, output: 15 },
+    pricing: {input: 3, output: 15},
   },
   {
     id: 'claude-sonnet-4-5#thinking',
     upstream: 'claude-sonnet-4-5',
     name: 'Claude Sonnet 4.5 – High',
     api: 'messages',
-    thinking: { effort: 'high' },
+    thinking: {effort: 'high'},
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: { input: 3, output: 15 },
+    pricing: {input: 3, output: 15},
   },
 ];
 

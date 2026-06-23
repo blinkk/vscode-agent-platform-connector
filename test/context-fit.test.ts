@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {describe, expect, it} from 'vitest';
 
-import type { ModelDef } from '../src/catalog.ts';
-import { estimateRequestTokens, fitRequestToContext } from '../src/vertex.ts';
-import type { NormMessage, NormRequest } from '../src/vertex.ts';
+import type {ModelDef} from '../src/catalog.ts';
+import {estimateRequestTokens, fitRequestToContext} from '../src/vertex.ts';
+import type {NormMessage, NormRequest} from '../src/vertex.ts';
 
 const model: ModelDef = {
   id: 'claude-opus-4-8',
@@ -13,7 +13,7 @@ const model: ModelDef = {
 };
 
 function userMessage(text: string): NormMessage {
-  return { role: 'user', text };
+  return {role: 'user', text};
 }
 
 describe('fitRequestToContext', () => {
@@ -29,7 +29,7 @@ describe('fitRequestToContext', () => {
     const big = 'x'.repeat(4000); // ~1000 tokens each
     const req: NormRequest = {
       messages: [
-        { role: 'system', text: 'system prompt' },
+        {role: 'system', text: 'system prompt'},
         userMessage('old-1 ' + big),
         userMessage('old-2 ' + big),
         userMessage('latest ' + big),
@@ -58,7 +58,7 @@ describe('fitRequestToContext', () => {
   });
 
   it('estimateRequestTokens grows with content size', () => {
-    const small = estimateRequestTokens({ messages: [userMessage('hi')] });
+    const small = estimateRequestTokens({messages: [userMessage('hi')]});
     const large = estimateRequestTokens({
       messages: [userMessage('x'.repeat(4000))],
     });

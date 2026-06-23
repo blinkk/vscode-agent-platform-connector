@@ -35,7 +35,7 @@ Usage:
   google-agent-platform-connector --proxy         Run a local Anthropic-compatible proxy so
                                                   GitHub Copilot CLI can use Claude on Vertex
                                                   (keeps running until interrupted)
-  google-agent-platform-connector --help          Show this help`
+  google-agent-platform-connector --help          Show this help`,
   );
   process.exit(0);
 } else if (argv.includes('--proxy')) {

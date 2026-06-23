@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import {describe, expect, it} from 'vitest';
 
-import { explainHttpError } from '../src/vertex.ts';
+import {explainHttpError} from '../src/vertex.ts';
 
 describe('explainHttpError context-window overflow', () => {
   const body = JSON.stringify({
@@ -22,14 +22,18 @@ describe('explainHttpError context-window overflow', () => {
 
   it('handles the message without explicit "a > b" counts', () => {
     const other = JSON.stringify({
-      error: { message: 'The input token count exceeds the maximum allowed.' },
+      error: {message: 'The input token count exceeds the maximum allowed.'},
     });
     const msg = explainHttpError(400, 'Bad Request', other);
     expect(msg).toMatch(/too long for this model's context window/);
   });
 
   it('still uses the generic hint for unrelated 400s', () => {
-    const msg = explainHttpError(400, 'Bad Request', 'some other validation error');
+    const msg = explainHttpError(
+      400,
+      'Bad Request',
+      'some other validation error',
+    );
     expect(msg).toMatch(/Check your project, location, and model settings/);
   });
 });
