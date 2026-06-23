@@ -1,5 +1,18 @@
 # vscode-agent-platform-connector
 
+## 0.2.0
+
+### Minor Changes
+
+- - Add a local Anthropic-compatible proxy (`--proxy`) so the GitHub Copilot CLI
+    can use Claude on Vertex through the connector.
+  - Prune older images from Claude requests to stay within the model's image
+    limits, keeping long multimodal conversations working.
+  - Re-label the high-effort model variants in the picker as "… – High" (e.g.
+    "Claude Opus 4.8 – High") for clarity.
+  - Add Prettier as the shared formatter, wired into ESLint and VS Code
+    format-on-save so editor auto-fix and CLI output stay in sync.
+
 ## 0.1.5
 
 ### Patch Changes
