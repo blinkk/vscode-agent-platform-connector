@@ -660,9 +660,71 @@ async function postVertex(
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(explainHttpError(res.status, res.statusText, text));
+    const message = explainHttpError(res.status, res.statusText, text);
+    const overflow = parseContextOverflow(res.status, text);
+    if (overflow) throw new ContextOverflowError(message, overflow);
+    throw new Error(message);
   }
   return res;
+}
+
+/** Details parsed from a context-window-overflow error, when recognizable. */
+export interface ContextOverflow {
+  /** Actual prompt token count reported by the upstream, if present. */
+  actual?: number;
+  /** The model's token limit reported by the upstream, if present. */
+  limit?: number;
+}
+
+/**
+ * Recognize a 400 caused by exceeding the model's context window and, when
+ * possible, extract the actual/limit token counts the upstream reported. Returns
+ * undefined when the body is not a context-overflow error. Matches both Gemini's
+ * and Claude-on-Vertex's phrasings (e.g. "prompt is too long", "input token
+ * count", "conversation is too long ... context window").
+ */
+export function parseContextOverflow(
+  status: number,
+  body: string,
+): ContextOverflow | undefined {
+  if (status !== 400) return undefined;
+  const isOverflow =
+    /prompt is too long|conversation is too long|context window|maximum.*tokens|token.*maximum|exceeds the maximum number of tokens|input token count/i.test(
+      body,
+    );
+  if (!isOverflow) return undefined;
+  // Match both phrasings: "N tokens > M maximum" (Claude) and
+  // "N > M tokens" (the "conversation is too long ... (a > b tokens)" form).
+  // The word "tokens"/"maximum" may appear after either number.
+  const counts = body.match(
+    /(\d[\d,]{3,})(?:\s*tokens?)?\s*>\s*(\d[\d,]{3,})/i,
+  );
+  if (!counts) {
+    const single = body.match(/(\d[\d,]{3,})\s*tokens?/i);
+    return {limit: single ? toInt(single[1]) : undefined};
+  }
+  return {actual: toInt(counts[1]), limit: toInt(counts[2])};
+}
+
+/** Parse a possibly comma-grouped integer string ("1,010,342" -> 1010342). */
+function toInt(s: string): number {
+  return parseInt(s.replace(/,/g, ''), 10);
+}
+
+/**
+ * Thrown for a 400 that means the request exceeded the model's context window.
+ * Carries the actual/limit token counts (when the upstream reported them) so the
+ * caller can trim more aggressively and retry instead of failing the turn.
+ */
+export class ContextOverflowError extends Error {
+  readonly actual?: number;
+  readonly limit?: number;
+  constructor(message: string, info: ContextOverflow) {
+    super(message);
+    this.name = 'ContextOverflowError';
+    this.actual = info.actual;
+    this.limit = info.limit;
+  }
 }
 
 /**
@@ -680,14 +742,12 @@ export function explainHttpError(
   // A 400 caused by exceeding the model's context window is common and has
   // nothing to do with project/location/model config, so give it a dedicated,
   // actionable message instead of the generic "check your settings" hint.
-  if (
-    status === 400 &&
-    /prompt is too long|maximum.*tokens|token.*maximum|exceeds the maximum number of tokens|input token count/i.test(
-      body,
-    )
-  ) {
-    const counts = body.match(/(\d[\d,]{3,})\s*tokens?\s*>\s*(\d[\d,]{3,})/i);
-    const over = counts ? ` (${counts[1]} > ${counts[2]} tokens)` : '';
+  const overflow = parseContextOverflow(status, body);
+  if (overflow) {
+    const over =
+      overflow.actual && overflow.limit
+        ? ` (${overflow.actual} > ${overflow.limit} tokens)`
+        : '';
     return (
       `Vertex ${status} ${statusText}: The conversation is too long for this ` +
       `model's context window${over}. Start a new chat, remove large files or ` +
@@ -738,15 +798,21 @@ export function explainHttpError(
 /* Streaming                                                                  */
 /* -------------------------------------------------------------------------- */
 
-/** Stream a Gemini (OpenAI Chat Completions) response as normalized events. */
-async function* streamGemini(
+/** POST a Gemini (OpenAI Chat Completions) request and return the open stream. */
+function postGemini(
   model: ModelDef,
   req: NormRequest,
   signal?: AbortSignal,
-): AsyncIterable<StreamEvent> {
+): Promise<Response> {
   const url = chatCompletionsUrl(config.project, locationFor(model));
-  const res = await postVertex(url, buildGeminiBody(model, req), signal);
+  return postVertex(url, buildGeminiBody(model, req), signal);
+}
 
+/** Parse a Gemini (OpenAI Chat Completions) response stream as events. */
+async function* parseGemini(
+  res: Response,
+  signal?: AbortSignal,
+): AsyncIterable<StreamEvent> {
   // Tool calls arrive as deltas keyed by index; accumulate name + arguments
   // (plus the Gemini thought signature, when present on the first FC part).
   const toolAcc = new Map<
@@ -801,12 +867,12 @@ async function* streamGemini(
   }
 }
 
-/** Stream a Claude (Anthropic Messages) response as normalized events. */
-async function* streamClaude(
+/** POST a Claude (Anthropic Messages) request and return the open stream. */
+function postClaude(
   model: ModelDef,
   req: NormRequest,
   signal?: AbortSignal,
-): AsyncIterable<StreamEvent> {
+): Promise<Response> {
   const upstream = upstreamModelId(model).replace(/^anthropic\//, '');
   const url = anthropicUrl(
     config.project,
@@ -814,8 +880,14 @@ async function* streamClaude(
     upstream,
     true,
   );
-  const res = await postVertex(url, buildClaudeBody(model, req), signal);
+  return postVertex(url, buildClaudeBody(model, req), signal);
+}
 
+/** Parse a Claude (Anthropic Messages) response stream as events. */
+async function* parseClaude(
+  res: Response,
+  signal?: AbortSignal,
+): AsyncIterable<StreamEvent> {
   // Track the current content block so input_json_delta can be accumulated.
   const blocks = new Map<
     number,
@@ -954,6 +1026,7 @@ export function estimateRequestTokens(req: NormRequest): number {
 export function fitRequestToContext(
   model: ModelDef,
   req: NormRequest,
+  budgetOverride?: number,
 ): NormRequest {
   const limit = model.maxInputTokens;
   if (!limit || !Number.isFinite(limit)) return req;
@@ -964,7 +1037,10 @@ export function fitRequestToContext(
     limit - 1,
     (model.maxOutputTokens ?? 4096) + Math.ceil(limit * 0.05),
   );
-  const budget = Math.max(1, limit - reserve);
+  const budget =
+    budgetOverride !== undefined
+      ? Math.max(1, budgetOverride)
+      : Math.max(1, limit - reserve);
 
   let total = estimateRequestTokens(req);
   if (total <= budget) return req;
@@ -1000,15 +1076,92 @@ export function fitRequestToContext(
   return {...req, messages: trimmed};
 }
 
-export function streamChat(
+/** Max number of trim-and-retry attempts after a context-overflow 400. */
+const MAX_OVERFLOW_RETRIES = 3;
+
+/**
+ * Given a context-overflow error the upstream reported, compute a new estimator
+ * budget that should bring the *next* request under the real limit. Our
+ * char-based estimate can undershoot the true token count, so scale our current
+ * estimate by the observed ratio (real/estimated) and subtract the overage, then
+ * apply a safety margin. Falls back to a fraction of the previous budget when
+ * the upstream did not include usable numbers.
+ */
+function nextBudgetAfterOverflow(
+  err: ContextOverflowError,
+  prevBudget: number,
+  prevEstimate: number,
+): number {
+  if (err.actual && err.limit && prevEstimate > 0) {
+    // How much our estimate undershot reality, so we can deflate accordingly.
+    const ratio = err.actual / prevEstimate;
+    const targetReal = err.limit;
+    // Estimator-space budget that maps to ~90% of the real limit.
+    const scaled = Math.floor((targetReal * 0.9) / Math.max(ratio, 1));
+    return Math.max(1, Math.min(prevBudget - 1, scaled));
+  }
+  // No numbers: shrink the budget by 25% each attempt.
+  return Math.max(1, Math.floor(prevBudget * 0.75));
+}
+
+/**
+ * Stream a normalized chat request, trimming and retrying when the upstream
+ * rejects it for exceeding the model's context window. The pre-flight
+ * `fitRequestToContext` estimate can undershoot the true token count; on a
+ * context-overflow 400 we re-trim using the actual counts the upstream reported
+ * and retry, so a long session degrades gracefully instead of failing the turn.
+ */
+export async function* streamChat(
   model: ModelDef,
   req: NormRequest,
   signal?: AbortSignal,
 ): AsyncIterable<StreamEvent> {
-  const fitted = fitRequestToContext(model, req);
-  return model.api === 'messages'
-    ? streamClaude(model, pruneClaudeImages(fitted), signal)
-    : streamGemini(model, fitted, signal);
+  const limit = model.maxInputTokens;
+  const reserve = limit
+    ? Math.min(
+        limit - 1,
+        (model.maxOutputTokens ?? 4096) + Math.ceil(limit * 0.05),
+      )
+    : 0;
+  let budget = limit ? Math.max(1, limit - reserve) : undefined;
+
+  for (let attempt = 0; ; attempt++) {
+    const fitted = fitRequestToContext(model, req, budget);
+    const estimate = estimateRequestTokens(fitted);
+    const prepared =
+      model.api === 'messages' ? pruneClaudeImages(fitted) : fitted;
+
+    // Only the POST (which surfaces the overflow 400 before any tokens stream)
+    // is retried; once parsing begins we are committed to that response.
+    let res: Response;
+    try {
+      res =
+        model.api === 'messages'
+          ? await postClaude(model, prepared, signal)
+          : await postGemini(model, prepared, signal);
+    } catch (err) {
+      if (
+        err instanceof ContextOverflowError &&
+        attempt < MAX_OVERFLOW_RETRIES &&
+        !signal?.aborted
+      ) {
+        const prev = budget ?? estimate;
+        budget = nextBudgetAfterOverflow(err, prev, estimate);
+        log(
+          `context overflow (attempt ${attempt + 1}/${MAX_OVERFLOW_RETRIES}): ` +
+            `upstream reported ${err.actual ?? '?'} > ${err.limit ?? '?'} ` +
+            `tokens; retrying with tighter budget ~${budget}`,
+        );
+        continue;
+      }
+      throw err;
+    }
+
+    yield* model.api === 'messages'
+      ? parseClaude(res, signal)
+      : parseGemini(res, signal);
+    return;
+  }
 }
 
 /* -------------------------------------------------------------------------- */
