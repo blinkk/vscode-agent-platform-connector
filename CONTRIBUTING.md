@@ -49,14 +49,48 @@ Publishing authenticates with **Microsoft Entra ID via OIDC** (no stored PAT) �
 see [Marketplace publishing auth](#marketplace-publishing-auth) for the one-time
 Azure setup.
 
-**Manual:**
+**Manual:** when releasing from a workstation (bypassing the CI flow), do **all**
+of the following as one operation so git, GitHub, and the Marketplace stay in
+sync. Skipping the tag or the GitHub Release leaves the repo looking
+un-released even though the extension shipped.
 
-1. `pnpm changeset` — describe each change (creates a file under `.changeset/`).
-2. `pnpm version` — consume pending changesets: bumps `package.json` and updates
-   `CHANGELOG.md`. Commit the result.
-3. `az login` (so `vsce` can get an Entra token), then `pnpm release` — build,
-   package, and `vsce publish --azure-credential` to the Marketplace. Use
-   `pnpm release:ovsx` to also publish to Open VSX (needs `OVSX_PAT`).
+1. **Pre-flight checks.** `pnpm run typecheck && pnpm run lint && pnpm test &&
+   pnpm run build` — these mirror CI; do not release if any fail.
+2. **Changeset.** `pnpm changeset` — describe each user-facing change (creates a
+   file under `.changeset/`). Commit the code + changeset and push to `main`.
+3. **Version bump.** `pnpm version` — consumes pending changesets: bumps
+   `package.json` and updates `CHANGELOG.md`.
+4. **Commit + tag + push.** Commit the bump as `ci: release <version>`, tag it
+   `v<version>`, then push **both** the commit and the tag:
+
+   ```bash
+   git add -A && git commit -m "ci: release <version>"
+   git tag v<version>
+   git push origin main && git push origin v<version>
+   ```
+
+5. **GitHub Release.** The changesets CI action only creates the GitHub Release
+   when the "Version Packages" PR merges, so on a manual release create it
+   yourself from the new `CHANGELOG.md` section:
+
+   ```bash
+   gh release create v<version> --title "v<version>" --latest \
+     --notes "<changelog notes for this version>"
+   ```
+
+6. **Publish to the Marketplace.** Load the Marketplace PAT from the gitignored
+   `.env` (so it never appears on the command line or in logs) and run the same
+   script CI uses:
+
+   ```bash
+   set -a && . ./.env && set +a   # loads VSCE_PAT / AZURE_PAT
+   node ./scripts/release-ci.mjs  # packages + vsce publish (+ Open VSX if OVSX_PAT)
+   ```
+
+7. **Verify + clean up.** Confirm the Marketplace shows the new version
+   (`pnpm exec vsce show blinkk.vscode-agent-platform-connector --json`) and the
+   GitHub Release is Latest (`gh release list`), then remove the local
+   `*.vsix` artifact.
 
 ### Marketplace publishing auth
 
