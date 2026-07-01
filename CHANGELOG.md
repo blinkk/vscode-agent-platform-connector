@@ -1,5 +1,11 @@
 # vscode-agent-platform-connector
 
+## 0.3.0
+
+### Minor Changes
+
+- b243398: Add Claude Fable 5 and Claude Sonnet 5 to the built-in model catalog, each with a base and extended-reasoning ("High") variant.
+
 ## 0.2.1
 
 ### Patch Changes
