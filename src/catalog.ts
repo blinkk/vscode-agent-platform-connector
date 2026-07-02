@@ -37,6 +37,19 @@ export const DEFAULTS = {
 /** How VS Code and the connector talk to a model. */
 export type ModelApi = 'chat' | 'messages';
 
+/**
+ * Which upstream service serves a model.
+ *   - 'vertex'     Gemini Enterprise Agent Platform (Vertex AI), authenticated
+ *                  with gcloud credentials and billed to the configured GCP
+ *                  project. This is the default for every built-in model.
+ *   - 'gemini-api' The Google AI (AI Studio / "Gemini API", generativelanguage)
+ *                  OpenAI-compatible endpoint, authenticated with a `GEMINI_API_KEY`
+ *                  and billed to whoever owns that key. Uses the same OpenAI
+ *                  Chat Completions request/response shape as Vertex Gemini, so
+ *                  it is only valid together with `api: 'chat'`.
+ */
+export type ModelBackend = 'vertex' | 'gemini-api';
+
 /** Extended-reasoning ("thinking") configuration for a model variant. */
 export interface ThinkingConfig {
   /** Claude effort level: 'low' | 'medium' | 'high'. */
@@ -59,6 +72,12 @@ export interface ModelDef {
   /** Human label WITHOUT the project suffix. */
   name: string;
   api: ModelApi;
+  /**
+   * Which upstream serves this model. Defaults to 'vertex'. Set to 'gemini-api'
+   * to route through the Google AI (AI Studio) endpoint with a GEMINI_API_KEY
+   * instead of Vertex + gcloud credentials.
+   */
+  backend?: ModelBackend;
   thinking?: ThinkingConfig;
   maxInputTokens: number;
   maxOutputTokens: number;
@@ -104,6 +123,12 @@ export interface ConnectorConfig {
   /** Optional account to pin (`gcloud ... --account=`); usually unnecessary. */
   authAccount?: string;
   /**
+   * API key for models whose `backend` is 'gemini-api' (the Google AI / AI
+   * Studio endpoint). Billed to the account that owns the key, independently of
+   * the GCP `project` used for Vertex. Falls back to the `GEMINI_API_KEY` env var.
+   */
+  geminiApiKey?: string;
+  /**
    * Additional models to expose, beyond the built-in defaults. Lets users run
    * any model their project has enabled in Model Garden without a code change.
    * A custom entry whose `id` matches a built-in id overrides that built-in.
@@ -138,6 +163,31 @@ export const MODELS: readonly ModelDef[] = [
     maxOutputTokens: 65535,
     vision: true,
     pricing: {input: 0.3, output: 2.5},
+  },
+  // Gemini via the Google AI (AI Studio) "Gemini API" endpoint, authenticated
+  // with a GEMINI_API_KEY and billed to that key's account instead of the GCP
+  // project. Same OpenAI Chat Completions shape as Vertex Gemini, so `api` stays
+  // 'chat'; only the URL + auth header differ (see backend: 'gemini-api').
+  {
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash (Gemini API)',
+    api: 'chat',
+    backend: 'gemini-api',
+    maxInputTokens: 1048576,
+    maxOutputTokens: 65535,
+    vision: true,
+    pricing: {input: 0.3, output: 2.5},
+  },
+  {
+    id: 'gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro Preview (Gemini API)',
+    api: 'chat',
+    backend: 'gemini-api',
+    maxInputTokens: 1048576,
+    maxOutputTokens: 65535,
+    vision: true,
+    // Best-effort estimate for the local cost readout only, not billing.
+    pricing: {input: 2, output: 12},
   },
   {
     id: 'claude-opus-4-8',
@@ -223,8 +273,19 @@ export const MODELS: readonly ModelDef[] = [
   },
 ];
 
-/** The display name shown in the VS Code picker: "<Name> (<project>)". */
+/** True when a model is served by the Google AI (AI Studio) Gemini API. */
+export function isGeminiApiModel(model: ModelDef): boolean {
+  return model.backend === 'gemini-api';
+}
+
+/**
+ * The display name shown in the VS Code picker. Vertex models are suffixed with
+ * the active GCP project ("<Name> (<project>)"); Gemini API models are billed to
+ * the API key, not the project, so they already carry their own "(Gemini API)"
+ * label in `name` and are shown as-is.
+ */
 export function displayName(model: ModelDef, project: string): string {
+  if (isGeminiApiModel(model)) return model.name;
   return `${model.name} (${project})`;
 }
 
@@ -263,13 +324,26 @@ export function normalizeCustomModel(raw: unknown): ModelDef {
         'models or "messages" for Claude/Anthropic models)',
     );
   }
+  if (m.backend && m.backend !== 'vertex' && m.backend !== 'gemini-api') {
+    throw new Error(
+      `custom model "${m.id}" has invalid "backend" (use "vertex" or ` +
+        '"gemini-api")',
+    );
+  }
   // Infer api from the id when omitted: Claude/Anthropic -> messages, else chat.
   const api: ModelApi = m.api || (isClaudeModel(m.id) ? 'messages' : 'chat');
+  if (m.backend === 'gemini-api' && api !== 'chat') {
+    throw new Error(
+      `custom model "${m.id}" uses backend "gemini-api", which only supports ` +
+        'the "chat" api (Gemini/OpenAI shape), not "messages".',
+    );
+  }
   return {
     id: m.id,
     upstream: m.upstream,
     name: m.name,
     api,
+    backend: m.backend,
     thinking: m.thinking,
     maxInputTokens: m.maxInputTokens ?? CUSTOM_MODEL_DEFAULTS.maxInputTokens,
     maxOutputTokens: m.maxOutputTokens ?? CUSTOM_MODEL_DEFAULTS.maxOutputTokens,
@@ -339,6 +413,17 @@ export function vertexBase(location: string): string {
   return location === 'global'
     ? 'https://aiplatform.googleapis.com'
     : `https://${location}-aiplatform.googleapis.com`;
+}
+
+/**
+ * Google AI (AI Studio / "Gemini API") OpenAI-compatible Chat Completions
+ * endpoint. Authenticated with a GEMINI_API_KEY bearer token — no GCP project or
+ * location — and billed to the key's account. The request/response shape matches
+ * the Vertex openapi endpoint, so the same body builder + SSE parser are reused.
+ * See https://ai.google.dev/gemini-api/docs/openai.
+ */
+export function geminiApiUrl(): string {
+  return 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 }
 
 /** Gemini / OpenAI-compatible publisher models via the openapi endpoint. */

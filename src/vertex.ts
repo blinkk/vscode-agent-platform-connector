@@ -25,6 +25,9 @@
  *   GOOGLE_AGENT_PLATFORM_CLAUDE_LOCATION  default: global
  *   GOOGLE_AGENT_PLATFORM_AUTH_MODE        'adc' (default) | 'isolated'
  *   GOOGLE_AGENT_PLATFORM_AUTH_ACCOUNT     optional account to pin
+ *   GEMINI_API_KEY                         key for 'gemini-api' backend models
+ *                                          (Google AI / AI Studio); billed to the
+ *                                          key's account, not the GCP project
  *   GOOGLE_AGENT_PLATFORM_DEBUG=1          verbose logging
  */
 
@@ -36,7 +39,9 @@ import {
   ISOLATED_GCLOUD_DIR,
   anthropicUrl,
   chatCompletionsUrl,
+  geminiApiUrl,
   isClaudeModel,
+  isGeminiApiModel,
   loadFileConfig,
   modelGardenUrl,
   normalizeCustomModel,
@@ -60,6 +65,7 @@ export type ResolvedConfig = Required<
     | 'debug'
     | 'authMode'
     | 'authAccount'
+    | 'geminiApiKey'
   >
 >;
 
@@ -75,6 +81,36 @@ function fromEnv<K extends keyof ResolvedConfig>(
 ): string | undefined {
   if (value) envLocked.add(key);
   return value;
+}
+
+/**
+ * Gemini API key resolution. The effective `config.geminiApiKey` is the value the
+ * user pasted into SecretStorage (pushed in via {@link setGeminiApiKey}); when
+ * that is empty we fall back to the `GEMINI_API_KEY` env var, then the config
+ * file. The env/file fallback is captured once here so the CLI and proxy (which
+ * have no SecretStorage) still work, and so {@link setGeminiApiKey} can restore
+ * it when the stored secret is cleared.
+ */
+const geminiApiKeyFallback =
+  process.env.GEMINI_API_KEY || fileConfig.geminiApiKey || '';
+let geminiApiKeySecret = '';
+
+/**
+ * Set (or clear) the Gemini API key sourced from VS Code SecretStorage. A
+ * non-empty value takes precedence over the env/file fallback; clearing it
+ * (empty/undefined) reverts to that fallback.
+ */
+export function setGeminiApiKey(secret: string | undefined): void {
+  geminiApiKeySecret = (secret ?? '').trim();
+  config.geminiApiKey = geminiApiKeySecret || geminiApiKeyFallback;
+}
+
+/** Where the effective Gemini API key currently comes from (for status UI). */
+export function geminiApiKeySource(): 'secret' | 'env' | 'file' | 'none' {
+  if (geminiApiKeySecret) return 'secret';
+  if (process.env.GEMINI_API_KEY) return 'env';
+  if (fileConfig.geminiApiKey) return 'file';
+  return 'none';
 }
 
 export const config: ResolvedConfig = {
@@ -109,6 +145,10 @@ export const config: ResolvedConfig = {
     fromEnv('authAccount', process.env.GOOGLE_AGENT_PLATFORM_AUTH_ACCOUNT) ||
     fileConfig.authAccount ||
     '',
+  // Primary source is VS Code SecretStorage, pushed in via setGeminiApiKey().
+  // Until that resolves (and for the CLI/proxy, which has no SecretStorage) fall
+  // back to the GEMINI_API_KEY env var, then the config file.
+  geminiApiKey: geminiApiKeyFallback,
 };
 
 if (process.env.GOOGLE_AGENT_PLATFORM_DEBUG === '1') envLocked.add('debug');
@@ -172,6 +212,8 @@ export function applyConfigOverrides(
   assign('claudeLocation', overrides.claudeLocation);
   assign('authMode', overrides.authMode);
   assign('authAccount', overrides.authAccount);
+  // geminiApiKey is not applied here: it comes from SecretStorage (via
+  // setGeminiApiKey) with an env/file fallback, never from VS Code settings.
   if (typeof overrides.debug === 'boolean' && !envLocked.has('debug')) {
     config.debug = overrides.debug;
   }
@@ -827,8 +869,108 @@ function postGemini(
   req: NormRequest,
   signal?: AbortSignal,
 ): Promise<Response> {
+  const body = buildGeminiBody(model, req);
+  if (isGeminiApiModel(model)) {
+    return postGeminiApi(body, signal);
+  }
   const url = chatCompletionsUrl(config.project, locationFor(model));
-  return postVertex(url, buildGeminiBody(model, req), signal);
+  return postVertex(url, body, signal);
+}
+
+/**
+ * POST to the Google AI (AI Studio) "Gemini API" OpenAI-compatible endpoint. Uses
+ * a GEMINI_API_KEY bearer token — no gcloud, no GCP project — and bills the key's
+ * account. The body + streaming shape are identical to the Vertex openapi
+ * endpoint, so the shared Gemini body builder and SSE parser handle both.
+ */
+async function postGeminiApi(
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<Response> {
+  if (!config.geminiApiKey) {
+    throw new Error(
+      'No Gemini API key configured. Set ' +
+        '"blinkkAgentPlatformConnector.geminiApiKey" in VS Code settings, the ' +
+        'GEMINI_API_KEY env var, or "geminiApiKey" in the connector config file. ' +
+        'Create a key at https://aistudio.google.com/apikey.',
+    );
+  }
+  const res = await fetch(geminiApiUrl(), {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${config.geminiApiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    const overflow = parseContextOverflow(res.status, text);
+    const message = explainGeminiApiError(res.status, res.statusText, text);
+    if (overflow) throw new ContextOverflowError(message, overflow);
+    throw new Error(message);
+  }
+  return res;
+}
+
+/**
+ * Turn a raw Google AI (Gemini API) HTTP error into an actionable message. The
+ * Gemini API has no GCP project/Model Garden, so its failures map to a different
+ * set of causes (bad/missing key, key restrictions, quota) than Vertex.
+ */
+export function explainGeminiApiError(
+  status: number,
+  statusText: string,
+  body: string,
+): string {
+  const detail = body.slice(0, 400).replace(/\s+/g, ' ').trim();
+  const overflow = parseContextOverflow(status, body);
+  if (overflow) {
+    const over =
+      overflow.actual && overflow.limit
+        ? ` (${overflow.actual} > ${overflow.limit} tokens)`
+        : '';
+    return (
+      `Gemini API ${status} ${statusText}: The conversation is too long for ` +
+      `this model's context window${over}. Start a new chat or remove large ` +
+      'files/tool results from the context.'
+    );
+  }
+  let hint: string;
+  switch (status) {
+    case 400:
+      hint =
+        'Bad request. The GEMINI_API_KEY may be malformed, or the model id is ' +
+        'not available on the Gemini API for this key.';
+      break;
+    case 401:
+    case 403:
+      hint =
+        'Authentication failed. Check that GEMINI_API_KEY is valid and not ' +
+        'restricted (API/IP/referrer limits) for the Gemini API. Create or ' +
+        'manage keys at https://aistudio.google.com/apikey.';
+      break;
+    case 404:
+      hint =
+        'Model not found on the Gemini API. The id may be wrong or not yet ' +
+        'available to your key.';
+      break;
+    case 429:
+      hint =
+        'Rate limited / quota exceeded for this API key. Wait and retry, or ' +
+        'raise your Gemini API quota in Google AI Studio.';
+      break;
+    default:
+      hint =
+        status >= 500
+          ? 'The Gemini API returned a server error. This is usually ' +
+            'transient — wait a moment and try again.'
+          : 'Check your GEMINI_API_KEY and model id, then try again.';
+  }
+  return `Gemini API ${status} ${statusText}: ${hint}${
+    detail ? ` (details: ${detail})` : ''
+  }`;
 }
 
 /** Parse a Gemini (OpenAI Chat Completions) response stream as events. */
@@ -1218,21 +1360,54 @@ export async function* streamChat(
 /* CLI helpers                                                                */
 /* -------------------------------------------------------------------------- */
 
-/** Probe each distinct model against Vertex and log the HTTP status. */
+/** Probe each distinct model (Vertex or Gemini API) and log the HTTP status. */
 export async function runCheck(): Promise<void> {
-  requireProject();
+  const models = getModels();
+  const hasVertex = models.some((m) => !isGeminiApiModel(m));
+  // A project is only needed to probe Vertex models; a Gemini-API-only setup
+  // has no GCP project, so don't demand one it will never use.
+  if (hasVertex) requireProject();
   log(
-    `project=${config.project} gemini=${config.geminiLocation} ` +
-      `claude=${config.claudeLocation} auth=${config.authMode}`,
+    `project=${config.project || '(none)'} gemini=${config.geminiLocation} ` +
+      `claude=${config.claudeLocation} auth=${config.authMode} ` +
+      `geminiApiKey=${config.geminiApiKey ? 'set' : 'unset'}`,
   );
-  const token = await getAccessToken();
-  log('access token OK');
+  const token = hasVertex ? await getAccessToken() : '';
+  if (hasVertex) log('access token OK');
 
   const seen = new Set<string>();
-  for (const m of getModels()) {
+  for (const m of models) {
     const key = upstreamModelId(m);
-    if (seen.has(key)) continue;
-    seen.add(key);
+    // Namespace by backend so a Vertex and a Gemini-API model that share an
+    // upstream id (e.g. gemini-3.5-flash) are both probed.
+    const dedupeKey = `${m.backend ?? 'vertex'}:${key}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    if (isGeminiApiModel(m)) {
+      if (!config.geminiApiKey) {
+        log(`probe ${m.id} (gemini-api): skipped — no GEMINI_API_KEY`);
+        continue;
+      }
+      const r = await fetch(geminiApiUrl(), {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${config.geminiApiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: upstreamModelId(m),
+          messages: [{role: 'user', content: 'ping'}],
+          max_tokens: 8,
+        }),
+      });
+      log(`probe ${m.id} (gemini-api): HTTP ${r.status}`);
+      if (r.status !== 200) {
+        const text = await r.text();
+        log(`  ${text.slice(0, 160).replace(/\s+/g, ' ')}`);
+      }
+      continue;
+    }
 
     const isClaude = isClaudeModel(m.id);
     const upstream = key.replace(/^anthropic\//, '');
