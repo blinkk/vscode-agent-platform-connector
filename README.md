@@ -95,17 +95,50 @@ Finally, set the project in the extension settings
 
 All settings live under `blinkkAgentPlatformConnector.*`:
 
-| Setting          | Description                                          |
-| ---------------- | ---------------------------------------------------- |
-| `project`        | **Required.** GCP project billed for usage.          |
-| `authMode`       | `adc` (default) or `isolated`.                       |
-| `authAccount`    | Optional gcloud account to pin.                      |
-| `geminiLocation` | Vertex location for Gemini (default `global`).       |
-| `claudeLocation` | Vertex location for Claude (default `global`).       |
-| `customModels`   | Extra models to expose beyond the built-in defaults. |
+| Setting          | Description                                                   |
+| ---------------- | ------------------------------------------------------------- |
+| `project`        | **Required** for Vertex models. GCP project billed for usage. |
+| `authMode`       | `adc` (default) or `isolated`.                                |
+| `authAccount`    | Optional gcloud account to pin.                               |
+| `geminiLocation` | Vertex location for Gemini (default `global`).                |
+| `claudeLocation` | Vertex location for Claude (default `global`).                |
+| `customModels`   | Extra models to expose beyond the built-in defaults.          |
 
 Each setting can also be overridden by a `GOOGLE_AGENT_PLATFORM_*` environment
-variable.
+variable. The **Gemini API** key is _not_ a setting — it lives in secret storage;
+see below.
+
+### Backends: Vertex vs. the Gemini API
+
+Every built-in model is served by **Vertex AI / Agent Platform** (billed to your
+GCP `project` via gcloud credentials), except the two models labelled
+**_(Gemini API)_** in the picker:
+
+- **Gemini 3.5 Flash (Gemini API)**
+- **Gemini 3.1 Pro Preview (Gemini API)**
+
+These route through [Google AI Studio](https://ai.google.dev/gemini-api/docs)
+instead of Vertex, authenticated with a Gemini API key and **billed to the
+account that owns that key** — independently of the GCP project used for the
+Vertex/Claude models.
+
+**Setting the key.** Create one at
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey), then run the
+**Blinkk Agent Platform Chat Connector: Set Gemini API Key** command (also
+reachable from the status-bar menu). The key is stored in VS Code's
+[SecretStorage](https://code.visualstudio.com/api/references/vscode-api#SecretStorage) —
+the OS keychain — **not** in `settings.json`, so it never lands in plaintext or
+in synced/committed settings. Run the command again with an empty value to clear
+it.
+
+**Env-var fallback.** If no key is stored, the connector falls back to the
+`GEMINI_API_KEY` environment variable (then a `geminiApiKey` entry in the config
+file, used by the CLI/proxy). A stored key takes precedence over the env var. If
+neither is set, the two Gemini API models simply don't work; every Vertex-backed
+model is unaffected. The status-bar menu shows which source is in effect.
+
+To expose additional Gemini API models yourself, add a `customModels` entry with
+`"backend": "gemini-api"` (only valid with the `chat` api).
 
 ## Cost tracking
 

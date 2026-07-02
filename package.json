@@ -185,6 +185,18 @@
                   ],
                   "markdownDescription": "Upstream API shape. Inferred from the id when omitted."
                 },
+                "backend": {
+                  "type": "string",
+                  "enum": [
+                    "vertex",
+                    "gemini-api"
+                  ],
+                  "markdownEnumDescriptions": [
+                    "Vertex AI / Agent Platform, billed to the GCP `project` via gcloud credentials (default).",
+                    "Google AI Studio (Gemini API), billed to the account that owns `geminiApiKey`. Only valid with `api: chat`."
+                  ],
+                  "markdownDescription": "Which upstream serves this model. Defaults to `vertex`. Use `gemini-api` to route through Google AI Studio with your `geminiApiKey` instead of Vertex."
+                },
                 "upstream": {
                   "type": "string",
                   "markdownDescription": "Optional upstream Vertex model id, if it differs from `id` (e.g. for a `#thinking` variant)."
@@ -227,6 +239,11 @@
       {
         "command": "googleAgentPlatform.setProject",
         "title": "Set GCP Project",
+        "category": "Blinkk Agent Platform Chat Connector"
+      },
+      {
+        "command": "googleAgentPlatform.setGeminiApiKey",
+        "title": "Set Gemini API Key",
         "category": "Blinkk Agent Platform Chat Connector"
       },
       {

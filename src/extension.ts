@@ -27,10 +27,12 @@ import {
 import {
   applyConfigOverrides,
   config as connectorConfig,
+  geminiApiKeySource,
   getModels,
   logListeners,
   runCheck,
   setCustomModels,
+  setGeminiApiKey,
   streamChat,
 } from './vertex.ts';
 import type {
@@ -44,9 +46,72 @@ import type {
 
 const VENDOR = 'blinkk-google-agent-platform';
 const SETTINGS_SECTION = 'blinkkAgentPlatformConnector';
+/** SecretStorage key under which the Gemini API key is kept (never in settings). */
+const GEMINI_API_KEY_SECRET = 'blinkkAgentPlatformConnector.geminiApiKey';
 
 let output: vscode.OutputChannel;
 let statusBar: vscode.StatusBarItem;
+/** Set on activation so commands can read/write the Gemini API key secret. */
+let secretStorage: vscode.SecretStorage;
+
+/** Load the Gemini API key from SecretStorage into the connector config. */
+async function loadGeminiApiKeyFromSecrets(): Promise<void> {
+  const stored = await secretStorage.get(GEMINI_API_KEY_SECRET);
+  // Empty/undefined reverts to the GEMINI_API_KEY env var (or config file).
+  setGeminiApiKey(stored);
+}
+
+/** Human-readable "is the Gemini API key set, and from where?" label. */
+function geminiApiKeyStatusLabel(): string {
+  switch (geminiApiKeySource()) {
+    case 'secret':
+      return 'set (secret store)';
+    case 'env':
+      return 'set (GEMINI_API_KEY env)';
+    case 'file':
+      return 'set (config file)';
+    default:
+      return 'not set';
+  }
+}
+
+/**
+ * Prompt for the Gemini API key and store it in SecretStorage. The input is
+ * shown in plain text (not masked) so the pasted key is visible for verification;
+ * storing an empty value clears it (reverting to the GEMINI_API_KEY env var).
+ * Refreshes config + UI after saving.
+ */
+async function promptForGeminiApiKey(): Promise<void> {
+  const value = await vscode.window.showInputBox({
+    title: 'Set Gemini API key',
+    prompt:
+      'API key for the (Gemini API) models, from Google AI Studio. Stored in ' +
+      "VS Code's secret storage, not in settings.json. Leave empty to clear it.",
+    placeHolder: 'Paste your Gemini API key (AIza…)',
+    ignoreFocusOut: true,
+  });
+  if (value === undefined) return; // user cancelled
+  const key = value.trim();
+  if (key) {
+    await secretStorage.store(GEMINI_API_KEY_SECRET, key);
+  } else {
+    await secretStorage.delete(GEMINI_API_KEY_SECRET);
+  }
+  // The onDidChange handler reloads + refreshes, but do it eagerly too so the
+  // change is reflected immediately even if the event is coalesced.
+  await loadGeminiApiKeyFromSecrets();
+  renderStatusBar();
+  const src = geminiApiKeySource();
+  vscode.window.showInformationMessage(
+    key
+      ? 'Gemini API key saved to secret storage.'
+      : src === 'none'
+        ? 'Gemini API key cleared.'
+        : `Gemini API key cleared; falling back to the ${
+            src === 'env' ? 'GEMINI_API_KEY env var' : 'config file'
+          }.`,
+  );
+}
 
 /** Read overrides from VS Code settings (empty values are ignored downstream). */
 function readSettingsOverrides(): Partial<ResolvedConfig> {
@@ -85,6 +150,9 @@ function renderStatusBar(): void {
       : '- $(warning) Project: not set — configure `blinkkAgentPlatformConnector.project`',
     `- $(key) Auth: \`${connectorConfig.authMode}\`${account ? ` (\`${account}\`)` : ''}`,
     `- $(globe) Gemini: \`${connectorConfig.geminiLocation}\` · Claude: \`${connectorConfig.claudeLocation}\``,
+    ...(models.some((m) => m.backend === 'gemini-api')
+      ? [`- $(key) Gemini API key: ${geminiApiKeyStatusLabel()}`]
+      : []),
     `- $(graph) Today's estimated cost: \`${formatUsd(usage.costUsd)}\` (${usage.requests} req)`,
     '',
     `**Models** (${models.length})`,
@@ -158,6 +226,9 @@ async function showStatusMenu(): Promise<void> {
         .map((m) => m.name)
         .join(', ')}`,
     },
+    ...(getModels().some((m) => m.backend === 'gemini-api')
+      ? [{label: `$(key) Gemini API key: ${geminiApiKeyStatusLabel()}`}]
+      : []),
     {
       label: `$(graph) Today's estimated cost: ${formatUsd(
         getTodayUsage().costUsd,
@@ -179,6 +250,11 @@ async function showStatusMenu(): Promise<void> {
       label: '$(sign-in) Sign in (isolated credentials)',
       detail: "Populate the connector's isolated gcloud store",
       command: 'googleAgentPlatform.signIn',
+    },
+    {
+      label: '$(key) Set Gemini API key',
+      detail: 'Store the AI Studio key for (Gemini API) models',
+      command: 'googleAgentPlatform.setGeminiApiKey',
     },
     {
       label: '$(check) Check models',
@@ -555,6 +631,18 @@ export function activate(context: vscode.ExtensionContext): void {
   applyConfigOverrides(readSettingsOverrides());
   setCustomModels(readCustomModels());
 
+  // The Gemini API key lives in SecretStorage, not settings. Load it
+  // asynchronously (falling back to the GEMINI_API_KEY env var until it
+  // resolves) and refresh the UI once it is in place.
+  secretStorage = context.secrets;
+  void loadGeminiApiKeyFromSecrets().then(() => renderStatusBar());
+  context.subscriptions.push(
+    context.secrets.onDidChange((e) => {
+      if (e.key !== GEMINI_API_KEY_SECRET) return;
+      void loadGeminiApiKeyFromSecrets().then(() => renderStatusBar());
+    }),
+  );
+
   statusBar = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     100,
@@ -612,6 +700,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       'googleAgentPlatform.setProject',
       promptForProject,
+    ),
+    vscode.commands.registerCommand(
+      'googleAgentPlatform.setGeminiApiKey',
+      promptForGeminiApiKey,
     ),
     vscode.commands.registerCommand('googleAgentPlatform.signIn', () => {
       // Runs gcloud directly in a terminal (no npm package needed). The exact
