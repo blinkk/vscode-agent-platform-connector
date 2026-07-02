@@ -1068,7 +1068,7 @@ export function fitRequestToContext(
   let total = estimateRequestTokens(req);
   if (total <= budget) return req;
 
-  const messages = [...req.messages];
+  const messages = req.messages;
   // Indices we must never drop: all system messages and the final message.
   const lastIdx = messages.length - 1;
   const protectedIdx = new Set<number>([lastIdx]);
@@ -1076,22 +1076,49 @@ export function fitRequestToContext(
     if (m.role === 'system') protectedIdx.add(i);
   });
 
-  // Walk from oldest to newest, removing droppable messages until we fit.
+  // Group messages into atomic drop units: an assistant `tool_use` turn and
+  // its immediately-following `tool_result` reply must be dropped (or kept)
+  // together. Trimming just one half leaves the other as an orphan and
+  // upstream rejects the request with a 400 ("tool_use ids were found
+  // without tool_result blocks" / "unexpected tool_use_id in tool_result").
+  const units: Array<{
+    indices: number[];
+    tokens: number;
+    protected: boolean;
+  }> = [];
+  for (let i = 0; i < messages.length; ) {
+    const m = messages[i];
+    const pairsWithNext =
+      m.role === 'assistant' &&
+      !!m.toolCalls?.length &&
+      !!messages[i + 1]?.toolResults?.length;
+    const indices = pairsWithNext ? [i, i + 1] : [i];
+    const tokens = indices.reduce(
+      (sum, idx) => sum + estimateMessageTokens(messages[idx]),
+      0,
+    );
+    units.push({
+      indices,
+      tokens,
+      protected: indices.some((idx) => protectedIdx.has(idx)),
+    });
+    i += indices.length;
+  }
+
+  // Walk from oldest to newest, removing droppable units until we fit.
   let removed = 0;
-  for (let i = 0; i < messages.length && total > budget; i++) {
-    if (protectedIdx.has(i)) continue;
-    if (!messages[i]) continue;
-    total -= estimateMessageTokens(messages[i]);
-    // Tombstone; filtered out below to keep indices stable during the loop.
-    (messages as Array<NormMessage | null>)[i] = null;
-    removed++;
+  const dropped = new Set<number>();
+  for (const unit of units) {
+    if (total <= budget) break;
+    if (unit.protected) continue;
+    total -= unit.tokens;
+    for (const idx of unit.indices) dropped.add(idx);
+    removed += unit.indices.length;
   }
 
   if (removed === 0) return req;
 
-  const trimmed = (messages as Array<NormMessage | null>).filter(
-    (m): m is NormMessage => m !== null,
-  );
+  const trimmed = messages.filter((_, i) => !dropped.has(i));
   log(
     `context safeguard: trimmed ${removed} oldest message(s); ` +
       `~${total} est tokens <= ${budget} budget (limit ${limit})`,

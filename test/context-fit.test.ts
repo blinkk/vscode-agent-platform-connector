@@ -64,4 +64,40 @@ describe('fitRequestToContext', () => {
     });
     expect(large).toBeGreaterThan(small);
   });
+
+  it('drops a tool_use/tool_result pair together, never splitting them', () => {
+    // Each old turn (assistant tool_use + user tool_result) is large enough
+    // that dropping just one of the two wouldn't be enough to hit budget,
+    // forcing the trimmer to consider the pair as a unit.
+    const big = 'x'.repeat(4000);
+    const req: NormRequest = {
+      messages: [
+        {role: 'system', text: 'system prompt'},
+        {
+          role: 'assistant',
+          toolCalls: [{id: 'call_1', name: 'do_thing', input: {a: big}}],
+        },
+        {role: 'user', toolResults: [{callId: 'call_1', content: big}]},
+        userMessage('latest ' + big),
+      ],
+    };
+
+    const fitted = fitRequestToContext(model, req);
+    expect(fitted).not.toBe(req);
+
+    const hasOrphanToolUse = fitted.messages.some(
+      (m, i) =>
+        m.role === 'assistant' &&
+        m.toolCalls?.length &&
+        !fitted.messages[i + 1]?.toolResults?.length,
+    );
+    const hasOrphanToolResult = fitted.messages.some((m, i) => {
+      if (!m.toolResults?.length) return false;
+      const prev = fitted.messages[i - 1];
+      const ids = new Set((prev?.toolCalls ?? []).map((t) => t.id));
+      return m.toolResults.some((r) => !ids.has(r.callId));
+    });
+    expect(hasOrphanToolUse).toBe(false);
+    expect(hasOrphanToolResult).toBe(false);
+  });
 });
