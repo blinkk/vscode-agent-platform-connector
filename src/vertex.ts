@@ -504,9 +504,18 @@ function stripImages(m: NormMessage, count: number): NormMessage {
 }
 
 /** Build an Anthropic Messages body for a Claude model. */
-function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
+export function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
   let system = '';
   const messages: Array<Record<string, unknown>> = [];
+
+  // Anthropic requires every `tool_result` to be immediately preceded by an
+  // assistant turn whose `tool_use` ids match. When VS Code's chat history is
+  // trimmed for context (or a prior turn failed mid-tool-call), a `tool_result`
+  // can be left dangling with no matching `tool_use` in the previous message —
+  // upstream then rejects the request with a 400 ("unexpected `tool_use_id`
+  // found in `tool_result` blocks"). Track the ids emitted by the previous
+  // assistant turn and drop any `tool_result` that can't be paired.
+  let prevToolUseIds: Set<string> | null = null;
 
   for (const m of req.messages) {
     if (m.role === 'system') {
@@ -514,9 +523,19 @@ function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
       continue;
     }
     if (m.toolResults?.length) {
+      const results = m.toolResults.filter((r) =>
+        prevToolUseIds?.has(r.callId),
+      );
+      // Reset now that this turn consumes the preceding tool_use ids.
+      prevToolUseIds = null;
+      if (!results.length) {
+        // All results were orphaned (e.g. this is message 0 with no assistant
+        // turn before it). Emitting them would trip the pairing check, so skip.
+        continue;
+      }
       messages.push({
         role: 'user',
-        content: m.toolResults.map((r) => ({
+        content: results.map((r) => ({
           type: 'tool_result',
           tool_use_id: r.callId,
           content: r.content,
@@ -548,6 +567,10 @@ function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
         });
       }
     }
+    prevToolUseIds =
+      m.role === 'assistant' && m.toolCalls?.length
+        ? new Set(m.toolCalls.map((t) => t.id))
+        : null;
     if (content.length) messages.push({role: m.role, content});
   }
 
