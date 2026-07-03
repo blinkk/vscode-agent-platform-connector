@@ -616,6 +616,8 @@ export function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
     if (content.length) messages.push({role: m.role, content});
   }
 
+  repairUnansweredToolUse(messages);
+
   const body: Record<string, unknown> = {
     anthropic_version: 'vertex-2023-10-16',
     messages,
@@ -637,6 +639,57 @@ export function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
       req.toolMode === 'required' ? {type: 'any'} : {type: 'auto'};
   }
   return {...body, ...req.modelOptions};
+}
+
+/**
+ * Anthropic also enforces the inverse of the orphaned-`tool_result` rule
+ * handled above: every assistant `tool_use` block must be answered by a
+ * matching `tool_result` in the immediately-following user message. VS Code's
+ * history violates this whenever a turn dies mid-tool-call (network error,
+ * upstream 4xx/5xx, user cancellation) — the assistant's `tool_use` is
+ * recorded but its result never lands, and from then on *every* request built
+ * from that history is rejected with a 400 ("tool_use ids were found without
+ * tool_result blocks immediately after"), wedging the conversation. Repair in
+ * place by synthesizing error placeholder results for the unanswered ids.
+ */
+function repairUnansweredToolUse(
+  messages: Array<Record<string, unknown>>,
+): void {
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
+    const toolUseIds = (m.content as Array<Record<string, unknown>>)
+      .filter((b) => b.type === 'tool_use')
+      .map((b) => b.id as string);
+    if (!toolUseIds.length) continue;
+
+    const next = messages[i + 1];
+    const nextBlocks =
+      next?.role === 'user' && Array.isArray(next.content)
+        ? (next.content as Array<Record<string, unknown>>)
+        : null;
+    const answered = new Set(
+      (nextBlocks ?? [])
+        .filter((b) => b.type === 'tool_result')
+        .map((b) => b.tool_use_id as string),
+    );
+    const missing = toolUseIds.filter((id) => !answered.has(id));
+    if (!missing.length) continue;
+
+    const placeholders = missing.map((id) => ({
+      type: 'tool_result',
+      tool_use_id: id,
+      is_error: true,
+      content: 'Tool call did not complete; no result was recorded.',
+    }));
+    if (nextBlocks && answered.size) {
+      // The following turn already carries some results; complete it in place
+      // (tool_result turns we build contain only tool_result blocks).
+      nextBlocks.push(...placeholders);
+    } else {
+      messages.splice(i + 1, 0, {role: 'user', content: placeholders});
+    }
+  }
 }
 
 /* -------------------------------------------------------------------------- */
