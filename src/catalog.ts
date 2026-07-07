@@ -282,11 +282,12 @@ export function isGeminiApiModel(model: ModelDef): boolean {
  * The display name shown in the VS Code picker. Vertex models are suffixed with
  * the active GCP project ("<Name> (<project>)"); Gemini API models are billed to
  * the API key, not the project, so they already carry their own "(Gemini API)"
- * label in `name` and are shown as-is.
+ * label in `name` and are shown as-is. When no project is configured the suffix
+ * becomes a concise warning so the picker makes the misconfiguration obvious.
  */
 export function displayName(model: ModelDef, project: string): string {
   if (isGeminiApiModel(model)) return model.name;
-  return `${model.name} (${project})`;
+  return `${model.name} (${project || '⚠ no project'})`;
 }
 
 /** The upstream model id to send to Vertex (strips the "#thinking" tag). */
