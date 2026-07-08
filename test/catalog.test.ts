@@ -135,6 +135,11 @@ describe('id + name helpers', () => {
     expect(displayName(m, 'my-project')).toBe('Claude Opus 4.8 (my-project)');
   });
 
+  it('displayName warns when no project is configured', () => {
+    const m = findModel('claude-opus-4-8')!;
+    expect(displayName(m, '')).toBe('Claude Opus 4.8 (⚠ no project)');
+  });
+
   it('upstreamModelId strips the #thinking tag', () => {
     expect(upstreamModelId('claude-opus-4-8#thinking')).toBe('claude-opus-4-8');
   });
