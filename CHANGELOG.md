@@ -1,5 +1,12 @@
 # vscode-agent-platform-connector
 
+## 0.4.2
+
+### Patch Changes
+
+- e6c2724: Show a "(⚠ no project)" warning in the model picker label when no GCP project is
+  configured, instead of rendering empty parentheses.
+
 ## 0.4.1
 
 ### Patch Changes
