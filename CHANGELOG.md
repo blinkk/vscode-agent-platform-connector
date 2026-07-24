@@ -1,5 +1,12 @@
 # vscode-agent-platform-connector
 
+## 0.5.0
+
+### Minor Changes
+
+- 7d75ece: Add Claude Opus 5 to the model catalog, including a high-effort thinking variant
+  (Claude Opus 5 – High).
+
 ## 0.4.2
 
 ### Patch Changes
