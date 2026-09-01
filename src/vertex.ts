@@ -399,6 +399,38 @@ export type StreamEvent =
  */
 const SKIP_THOUGHT_SIGNATURE = 'skip_thought_signature_validator';
 
+/**
+ * Collapse runs of tool-result-only turns into a single turn.
+ *
+ * When the assistant issues several tool calls in one turn, VS Code reports
+ * each result as its own message. Anthropic instead requires every result for
+ * a given assistant turn to arrive in one user message whose `tool_result`
+ * blocks pair with that turn's `tool_use` ids, so the un-merged form loses all
+ * results after the first — they are dropped as unpaired and then replaced with
+ * synthetic failures, which reads to the model as if the tools really failed.
+ */
+export function coalesceToolResults(messages: NormMessage[]): NormMessage[] {
+  const isResultOnly = (m: NormMessage) =>
+    Boolean(m.toolResults?.length) &&
+    !m.text &&
+    !m.images?.length &&
+    !m.toolCalls?.length;
+
+  const out: NormMessage[] = [];
+  for (const m of messages) {
+    const prev = out[out.length - 1];
+    if (prev && isResultOnly(prev) && isResultOnly(m)) {
+      out[out.length - 1] = {
+        ...prev,
+        toolResults: [...(prev.toolResults ?? []), ...(m.toolResults ?? [])],
+      };
+      continue;
+    }
+    out.push(m);
+  }
+  return out;
+}
+
 /** Build an OpenAI Chat Completions body for a Gemini model. */
 export function buildGeminiBody(model: ModelDef, req: NormRequest): unknown {
   const messages: Array<Record<string, unknown>> = [];
@@ -555,11 +587,11 @@ export function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
   // trimmed for context (or a prior turn failed mid-tool-call), a `tool_result`
   // can be left dangling with no matching `tool_use` in the previous message —
   // upstream then rejects the request with a 400 ("unexpected `tool_use_id`
-  // found in `tool_result` blocks"). Track the ids emitted by the previous
-  // assistant turn and drop any `tool_result` that can't be paired.
+  // found in `tool_result` blocks"). Track the ids still awaiting a result and
+  // drop any `tool_result` that can't be paired.
   let prevToolUseIds: Set<string> | null = null;
 
-  for (const m of req.messages) {
+  for (const m of coalesceToolResults(req.messages)) {
     if (m.role === 'system') {
       system += (system ? '\n\n' : '') + (m.text || '');
       continue;
@@ -568,8 +600,11 @@ export function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
       const results = m.toolResults.filter((r) =>
         prevToolUseIds?.has(r.callId),
       );
-      // Reset now that this turn consumes the preceding tool_use ids.
-      prevToolUseIds = null;
+      // Retire only the ids this turn actually answered. Clearing the whole set
+      // here would orphan any result that arrives in a later turn of the same
+      // batch (VS Code splits parallel results across messages).
+      for (const r of results) prevToolUseIds?.delete(r.callId);
+      if (!prevToolUseIds?.size) prevToolUseIds = null;
       if (!results.length) {
         // All results were orphaned (e.g. this is message 0 with no assistant
         // turn before it). Emitting them would trip the pairing check, so skip.
@@ -642,6 +677,16 @@ export function buildClaudeBody(model: ModelDef, req: NormRequest): unknown {
 }
 
 /**
+ * Stand-in content for a `tool_use` whose result is missing from the history.
+ * Phrased as a transcript gap rather than a tool failure so the model does not
+ * read it as "the tool errored" and pointlessly retry the call.
+ */
+const PLACEHOLDER_TOOL_RESULT =
+  '[connector] No result for this tool call is present in the conversation ' +
+  'history. This is a transcript gap, not a tool failure — do not assume the ' +
+  'tool failed or retry it solely because of this message.';
+
+/**
  * Anthropic also enforces the inverse of the orphaned-`tool_result` rule
  * handled above: every assistant `tool_use` block must be answered by a
  * matching `tool_result` in the immediately-following user message. VS Code's
@@ -676,11 +721,18 @@ function repairUnansweredToolUse(
     const missing = toolUseIds.filter((id) => !answered.has(id));
     if (!missing.length) continue;
 
+    // Loud on purpose: a synthesized result is always a history artifact, and
+    // a burst of them means results are being dropped before they get here.
+    log(
+      `synthesizing ${missing.length} placeholder tool_result(s) for ` +
+        `unanswered tool_use id(s): ${missing.join(', ')}`,
+    );
+
     const placeholders = missing.map((id) => ({
       type: 'tool_result',
       tool_use_id: id,
       is_error: true,
-      content: 'Tool call did not complete; no result was recorded.',
+      content: PLACEHOLDER_TOOL_RESULT,
     }));
     if (nextBlocks && answered.size) {
       // The following turn already carries some results; complete it in place
@@ -1370,8 +1422,15 @@ export async function* streamChat(
     : 0;
   let budget = limit ? Math.max(1, limit - reserve) : undefined;
 
+  // Merge split tool-result turns up front so context trimming sees each
+  // assistant turn and the full set of its results as one atomic unit.
+  const normalized: NormRequest = {
+    ...req,
+    messages: coalesceToolResults(req.messages),
+  };
+
   for (let attempt = 0; ; attempt++) {
-    const fitted = fitRequestToContext(model, req, budget);
+    const fitted = fitRequestToContext(model, normalized, budget);
     const estimate = estimateRequestTokens(fitted);
     const prepared =
       model.api === 'messages' ? pruneClaudeImages(fitted) : fitted;

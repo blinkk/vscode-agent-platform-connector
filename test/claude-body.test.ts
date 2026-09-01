@@ -242,3 +242,111 @@ describe('buildClaudeBody unanswered tool_use repair', () => {
     expect(results[0].is_error).toBe(undefined);
   });
 });
+
+describe('buildClaudeBody parallel tool calls', () => {
+  it('keeps every result when VS Code splits them across turns', () => {
+    // VS Code reports each parallel tool result as its own message. All of
+    // them must survive: dropping the later ones and replacing them with
+    // synthetic failures makes working tools look broken to the model.
+    const messages = claudeMessages({
+      messages: [
+        {role: 'user', text: 'hi'},
+        {
+          role: 'assistant',
+          toolCalls: [
+            {id: 'call_a', name: 'read_file', input: {}},
+            {id: 'call_b', name: 'list_dir', input: {}},
+            {id: 'call_c', name: 'grep_search', input: {}},
+          ],
+        },
+        {role: 'user', toolResults: [{callId: 'call_a', content: 'A ok'}]},
+        {role: 'user', toolResults: [{callId: 'call_b', content: 'B ok'}]},
+        {role: 'user', toolResults: [{callId: 'call_c', content: 'C ok'}]},
+      ],
+    });
+
+    expectToolPairingValid(messages);
+    const results = messages
+      .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+      .filter((c) => c.type === 'tool_result');
+    expect(results.map((r) => r.tool_use_id).sort()).toEqual([
+      'call_a',
+      'call_b',
+      'call_c',
+    ]);
+    expect(results.some((r) => r.is_error)).toBe(false);
+    expect(results.map((r) => r.content)).toEqual(['A ok', 'B ok', 'C ok']);
+  });
+
+  it('merges split results into one turn adjacent to the tool_use', () => {
+    const messages = claudeMessages({
+      messages: [
+        {
+          role: 'assistant',
+          toolCalls: [
+            {id: 'call_a', name: 'do_a', input: {}},
+            {id: 'call_b', name: 'do_b', input: {}},
+          ],
+        },
+        {role: 'user', toolResults: [{callId: 'call_a', content: 'A'}]},
+        {role: 'user', toolResults: [{callId: 'call_b', content: 'B'}]},
+        {role: 'assistant', text: 'done'},
+      ],
+    });
+
+    // One merged user turn carrying both results, not two separate turns.
+    expect(messages[1].role).toBe('user');
+    expect(messages[1].content).toHaveLength(2);
+    expect(messages[2].content).toEqual([{type: 'text', text: 'done'}]);
+  });
+
+  it('still synthesizes a result for a genuinely unanswered parallel call', () => {
+    const messages = claudeMessages({
+      messages: [
+        {
+          role: 'assistant',
+          toolCalls: [
+            {id: 'call_a', name: 'do_a', input: {}},
+            {id: 'call_b', name: 'do_b', input: {}},
+          ],
+        },
+        {role: 'user', toolResults: [{callId: 'call_a', content: 'A ok'}]},
+      ],
+    });
+
+    expectToolPairingValid(messages);
+    const results = messages[1].content.filter(
+      (c: any) => c.type === 'tool_result',
+    );
+    expect(results.find((r: any) => r.tool_use_id === 'call_a').is_error).toBe(
+      undefined,
+    );
+    expect(results.find((r: any) => r.tool_use_id === 'call_b').is_error).toBe(
+      true,
+    );
+  });
+
+  it('does not merge result turns separated by other content', () => {
+    const messages = claudeMessages({
+      messages: [
+        {
+          role: 'assistant',
+          toolCalls: [{id: 'call_a', name: 'do_a', input: {}}],
+        },
+        {role: 'user', toolResults: [{callId: 'call_a', content: 'A'}]},
+        {role: 'user', text: 'a new prompt'},
+        {
+          role: 'assistant',
+          toolCalls: [{id: 'call_b', name: 'do_b', input: {}}],
+        },
+        {role: 'user', toolResults: [{callId: 'call_b', content: 'B'}]},
+      ],
+    });
+
+    expectToolPairingValid(messages);
+    const results = messages
+      .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+      .filter((c) => c.type === 'tool_result');
+    expect(results.some((r) => r.is_error)).toBe(false);
+  });
+});
