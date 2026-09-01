@@ -1,6 +1,6 @@
 {
   "name": "vscode-agent-platform-connector",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "license": "MIT",
   "type": "module",
   "publisher": "blinkk",
