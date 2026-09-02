@@ -5,8 +5,8 @@ import {buildGeminiBody} from '../src/vertex.ts';
 import type {NormRequest} from '../src/vertex.ts';
 
 const model: ModelDef = {
-  id: 'google/gemini-3.5-flash',
-  name: 'Gemini 3.5 Flash',
+  id: 'google/gemini-3.8-flash',
+  name: 'Gemini 3.8 Flash',
   api: 'chat',
   maxInputTokens: 1000,
   maxOutputTokens: 1000,

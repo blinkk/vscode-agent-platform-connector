@@ -156,35 +156,21 @@ export interface ConnectorConfig {
  */
 export const MODELS: readonly ModelDef[] = [
   {
-    id: 'google/gemini-3.5-flash',
-    name: 'Gemini 3.5 Flash',
+    id: 'google/gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
     api: 'chat',
     maxInputTokens: 1048576,
-    maxOutputTokens: 65535,
+    maxOutputTokens: 65536,
     vision: true,
-    pricing: {input: 0.3, output: 2.5},
-  },
-  // Gemini via the Google AI (AI Studio) "Gemini API" endpoint, authenticated
-  // with a GEMINI_API_KEY and billed to that key's account instead of the GCP
-  // project. Same OpenAI Chat Completions shape as Vertex Gemini, so `api` stays
-  // 'chat'; only the URL + auth header differ (see backend: 'gemini-api').
-  {
-    id: 'gemini-3.5-flash',
-    name: 'Gemini 3.5 Flash (Gemini API)',
-    api: 'chat',
-    backend: 'gemini-api',
-    maxInputTokens: 1048576,
-    maxOutputTokens: 65535,
-    vision: true,
-    pricing: {input: 0.3, output: 2.5},
+    // Introductory rate through 2026-12-31; rises to 1.5/7.5 on 2027-01-01.
+    pricing: {input: 0.75, output: 3.75},
   },
   {
-    id: 'gemini-3.1-pro-preview',
-    name: 'Gemini 3.1 Pro Preview (Gemini API)',
+    id: 'google/gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro Preview',
     api: 'chat',
-    backend: 'gemini-api',
     maxInputTokens: 1048576,
-    maxOutputTokens: 65535,
+    maxOutputTokens: 65536,
     vision: true,
     // Best-effort estimate for the local cost readout only, not billing.
     pricing: {input: 2, output: 12},
@@ -196,7 +182,7 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 15, output: 75},
+    pricing: {input: 5, output: 25},
   },
   {
     // Same upstream model as claude-opus-4-8, but the proxy enables extended
@@ -209,7 +195,7 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 15, output: 75},
+    pricing: {input: 5, output: 25},
   },
   {
     id: 'claude-sonnet-4-5',
@@ -232,33 +218,13 @@ export const MODELS: readonly ModelDef[] = [
     pricing: {input: 3, output: 15},
   },
   {
-    id: 'claude-fable-5',
-    name: 'Claude Fable 5',
-    api: 'messages',
-    maxInputTokens: 1000000,
-    maxOutputTokens: 64000,
-    vision: true,
-    pricing: {input: 3, output: 15},
-  },
-  {
-    id: 'claude-fable-5#thinking',
-    upstream: 'claude-fable-5',
-    name: 'Claude Fable 5 – High',
-    api: 'messages',
-    thinking: {effort: 'high'},
-    maxInputTokens: 1000000,
-    maxOutputTokens: 64000,
-    vision: true,
-    pricing: {input: 3, output: 15},
-  },
-  {
     id: 'claude-sonnet-5',
     name: 'Claude Sonnet 5',
     api: 'messages',
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 3, output: 15},
+    pricing: {input: 2, output: 10},
   },
   {
     id: 'claude-sonnet-5#thinking',
@@ -269,7 +235,7 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 3, output: 15},
+    pricing: {input: 2, output: 10},
   },
   {
     id: 'claude-opus-5',
@@ -278,7 +244,7 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 15, output: 75},
+    pricing: {input: 5, output: 25},
   },
   {
     id: 'claude-opus-5#thinking',
@@ -289,7 +255,7 @@ export const MODELS: readonly ModelDef[] = [
     maxInputTokens: 1000000,
     maxOutputTokens: 64000,
     vision: true,
-    pricing: {input: 15, output: 75},
+    pricing: {input: 5, output: 25},
   },
 ];
 

@@ -1491,7 +1491,7 @@ export async function runCheck(): Promise<void> {
   for (const m of models) {
     const key = upstreamModelId(m);
     // Namespace by backend so a Vertex and a Gemini-API model that share an
-    // upstream id (e.g. gemini-3.5-flash) are both probed.
+    // upstream id (e.g. gemini-3.8-flash) are both probed.
     const dedupeKey = `${m.backend ?? 'vertex'}:${key}`;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
