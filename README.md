@@ -111,16 +111,13 @@ see below.
 ### Backends: Vertex vs. the Gemini API
 
 Every built-in model is served by **Vertex AI / Agent Platform** (billed to your
-GCP `project` via gcloud credentials), except the two models labelled
-**_(Gemini API)_** in the picker:
+GCP `project` via gcloud credentials).
 
-- **Gemini 3.5 Flash (Gemini API)**
-- **Gemini 3.1 Pro Preview (Gemini API)**
-
-These route through [Google AI Studio](https://ai.google.dev/gemini-api/docs)
-instead of Vertex, authenticated with a Gemini API key and **billed to the
-account that owns that key** — independently of the GCP project used for the
-Vertex/Claude models.
+The connector also supports a second backend: models labelled **_(Gemini API)_**
+route through [Google AI Studio](https://ai.google.dev/gemini-api/docs) instead
+of Vertex, authenticated with a Gemini API key and **billed to the account that
+owns that key** — independently of the GCP project. No built-in model uses this
+backend; add your own with a `customModels` entry (see below).
 
 **Setting the key.** Create one at
 [aistudio.google.com/apikey](https://aistudio.google.com/apikey), then run the
@@ -134,10 +131,11 @@ it.
 **Env-var fallback.** If no key is stored, the connector falls back to the
 `GEMINI_API_KEY` environment variable (then a `geminiApiKey` entry in the config
 file, used by the CLI/proxy). A stored key takes precedence over the env var. If
-neither is set, the two Gemini API models simply don't work; every Vertex-backed
-model is unaffected. The status-bar menu shows which source is in effect.
+neither is set, any Gemini API models you added simply don't work; every
+Vertex-backed model is unaffected. The status-bar menu shows which source is in
+effect.
 
-To expose additional Gemini API models yourself, add a `customModels` entry with
+To expose a Gemini API model, add a `customModels` entry with
 `"backend": "gemini-api"` (only valid with the `chat` api).
 
 ## Cost tracking

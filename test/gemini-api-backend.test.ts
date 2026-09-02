@@ -16,47 +16,52 @@ import {
   setGeminiApiKey,
 } from '../src/vertex.ts';
 
+// Every built-in model is Vertex-backed; the gemini-api backend is reachable
+// only via `customModels`, so backend-specific cases use a synthetic model.
+const geminiApiModel: ModelDef = {
+  id: 'gemini-3.1-pro-preview',
+  name: 'Gemini 3.1 Pro Preview (Gemini API)',
+  api: 'chat',
+  backend: 'gemini-api',
+  maxInputTokens: 1048576,
+  maxOutputTokens: 65536,
+};
+
 describe('Gemini API backend catalog', () => {
-  it('ships the two Gemini API models with backend "gemini-api"', () => {
-    const flash = findModel('gemini-3.5-flash', MODELS);
-    const pro = findModel('gemini-3.1-pro-preview', MODELS);
-    expect(flash?.backend).toBe('gemini-api');
-    expect(pro?.backend).toBe('gemini-api');
+  it('ships no built-in gemini-api models', () => {
+    expect(MODELS.filter(isGeminiApiModel)).toEqual([]);
+  });
+
+  it('serves the built-in Gemini models from Vertex', () => {
+    const flash = findModel('google/gemini-3.8-flash', MODELS);
+    const pro = findModel('google/gemini-3.1-pro-preview', MODELS);
+    expect(flash?.backend).toBeUndefined(); // defaults to vertex
+    expect(pro?.backend).toBeUndefined();
     // They use the OpenAI (chat) shape, not Anthropic messages.
     expect(flash?.api).toBe('chat');
     expect(pro?.api).toBe('chat');
   });
 
-  it('keeps the Vertex Gemini model distinct from the Gemini API one', () => {
-    const vertex = findModel('google/gemini-3.5-flash', MODELS);
-    const geminiApi = findModel('gemini-3.5-flash', MODELS);
-    expect(vertex?.backend).toBeUndefined(); // defaults to vertex
-    expect(geminiApi?.backend).toBe('gemini-api');
-    expect(vertex?.id).not.toBe(geminiApi?.id);
-  });
-
   it('isGeminiApiModel reflects the backend field', () => {
-    const geminiApi = findModel('gemini-3.5-flash', MODELS) as ModelDef;
-    const vertex = findModel('google/gemini-3.5-flash', MODELS) as ModelDef;
-    expect(isGeminiApiModel(geminiApi)).toBe(true);
+    const vertex = findModel('google/gemini-3.8-flash', MODELS) as ModelDef;
+    expect(isGeminiApiModel(geminiApiModel)).toBe(true);
     expect(isGeminiApiModel(vertex)).toBe(false);
   });
 });
 
 describe('displayName is backend-aware', () => {
-  const vertex = findModel('google/gemini-3.5-flash', MODELS) as ModelDef;
-  const geminiApi = findModel('gemini-3.5-flash', MODELS) as ModelDef;
+  const vertex = findModel('google/gemini-3.8-flash', MODELS) as ModelDef;
 
   it('appends the project for Vertex models', () => {
     expect(displayName(vertex, 'my-project')).toBe(
-      'Gemini 3.5 Flash (my-project)',
+      'Gemini 3.8 Flash (my-project)',
     );
   });
 
   it('does not append the project for Gemini API models', () => {
     // Billed to the API key, not the project — so no misleading project suffix.
-    const name = displayName(geminiApi, 'my-project');
-    expect(name).toBe('Gemini 3.5 Flash (Gemini API)');
+    const name = displayName(geminiApiModel, 'my-project');
+    expect(name).toBe('Gemini 3.1 Pro Preview (Gemini API)');
     expect(name).not.toContain('my-project');
   });
 });

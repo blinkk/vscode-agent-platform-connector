@@ -152,7 +152,7 @@ describe('id + name helpers', () => {
   it('isClaudeModel detects claude/anthropic ids', () => {
     expect(isClaudeModel('claude-opus-4-8')).toBe(true);
     expect(isClaudeModel('anthropic/claude')).toBe(true);
-    expect(isClaudeModel('google/gemini-3.5-flash')).toBe(false);
+    expect(isClaudeModel('google/gemini-3.8-flash')).toBe(false);
   });
 });
 
