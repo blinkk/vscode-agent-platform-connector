@@ -257,6 +257,26 @@ export const MODELS: readonly ModelDef[] = [
     vision: true,
     pricing: {input: 5, output: 25},
   },
+  {
+    id: 'claude-opus-5-5',
+    name: 'Claude Opus 5.5',
+    api: 'messages',
+    maxInputTokens: 1000000,
+    maxOutputTokens: 64000,
+    vision: true,
+    pricing: {input: 4, output: 20},
+  },
+  {
+    id: 'claude-opus-5-5#thinking',
+    upstream: 'claude-opus-5-5',
+    name: 'Claude Opus 5.5 – High',
+    api: 'messages',
+    thinking: {effort: 'high'},
+    maxInputTokens: 1000000,
+    maxOutputTokens: 64000,
+    vision: true,
+    pricing: {input: 4, output: 20},
+  },
 ];
 
 /** True when a model is served by the Google AI (AI Studio) Gemini API. */
