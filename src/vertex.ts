@@ -245,6 +245,79 @@ const debug = (...args: unknown[]) => {
 };
 
 /* -------------------------------------------------------------------------- */
+/* HTTPS transport                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * True for the TLS failure caused by VS Code's merged CA list.
+ *
+ * With `http.systemCertificates` on (the default), VS Code replaces the global
+ * `fetch` with one that hands undici an explicit CA list built as
+ * `[...tls.rootCertificates, ...OS trust store]`. A managed macOS device can
+ * carry a *cross-signed* root in that store — e.g. `GTS Root R1` issued by the
+ * legacy `GlobalSign Root CA`, which Google serves in the chain for
+ * `*.googleapis.com`. Node's bundled roots have the self-signed `GTS Root R1`
+ * but not that legacy GlobalSign root, so OpenSSL follows the cross-signed edge
+ * and dead-ends, failing every request the extension makes.
+ */
+function isMergedTrustStoreFailure(err: unknown): boolean {
+  for (let e: unknown = err, depth = 0; e && depth < 5; depth++) {
+    const code = (e as {code?: unknown}).code;
+    if (
+      code === 'UNABLE_TO_GET_ISSUER_CERT' ||
+      code === 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'
+    ) {
+      return true;
+    }
+    const message = (e as {message?: unknown}).message;
+    if (
+      typeof message === 'string' &&
+      message.includes('unable to get issuer certificate')
+    ) {
+      return true;
+    }
+    e = (e as {cause?: unknown}).cause;
+  }
+  return false;
+}
+
+let usedUnpatchedFetch = false;
+
+/**
+ * `fetch` for upstream calls.
+ *
+ * Prefers the global `fetch` so VS Code's proxy resolution (`http.proxySupport`,
+ * which defaults to `override`) keeps working. Only when a request fails with
+ * the merged-trust-store error above does it retry against the unwrapped
+ * implementation VS Code stashes on `globalThis` before patching, which
+ * validates using Node's own coherent trust store. Certificate verification
+ * stays fully enabled on both paths.
+ */
+const upstreamFetch: typeof fetch = async (input, init) => {
+  const unpatched = (globalThis as {__vscodeOriginalFetch?: typeof fetch})
+    .__vscodeOriginalFetch;
+  if (!unpatched || unpatched === fetch) {
+    return fetch(input, init);
+  }
+  if (usedUnpatchedFetch) {
+    return unpatched(input, init);
+  }
+  try {
+    return await fetch(input, init);
+  } catch (err) {
+    if (!isMergedTrustStoreFailure(err)) throw err;
+    // A retried body would already be consumed; only safe for a fresh request.
+    if (init?.body && typeof init.body !== 'string') throw err;
+    usedUnpatchedFetch = true;
+    log(
+      "TLS chain error via VS Code's merged certificate store; " +
+        "retrying with Node's trust store (verification stays enabled)",
+    );
+    return unpatched(input, init);
+  }
+};
+
+/* -------------------------------------------------------------------------- */
 /* Access token                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -810,7 +883,7 @@ async function postVertex(
 ): Promise<Response> {
   requireProject();
   const doFetch = (token: string) =>
-    fetch(url, {
+    upstreamFetch(url, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${token}`,
@@ -1000,7 +1073,7 @@ async function postGeminiApi(
         'Create a key at https://aistudio.google.com/apikey.',
     );
   }
-  const res = await fetch(geminiApiUrl(), {
+  const res = await upstreamFetch(geminiApiUrl(), {
     method: 'POST',
     headers: {
       authorization: `Bearer ${config.geminiApiKey}`,
@@ -1501,7 +1574,7 @@ export async function runCheck(): Promise<void> {
         log(`probe ${m.id} (gemini-api): skipped — no GEMINI_API_KEY`);
         continue;
       }
-      const r = await fetch(geminiApiUrl(), {
+      const r = await upstreamFetch(geminiApiUrl(), {
         method: 'POST',
         headers: {
           authorization: `Bearer ${config.geminiApiKey}`,
@@ -1538,7 +1611,7 @@ export async function runCheck(): Promise<void> {
           messages: [{role: 'user', content: 'ping'}],
           max_tokens: 8,
         };
-    const r = await fetch(url, {
+    const r = await upstreamFetch(url, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${token}`,
